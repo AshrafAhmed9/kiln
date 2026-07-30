@@ -1,0 +1,21 @@
+[build-system]
+requires = ["scikit-build-core>=0.9", "pybind11>=2.13"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "kiln"
+version = "0.0.1"
+description = "A from-scratch LLM inference engine -- Python orchestration, C++/CUDA compute"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "prometheus_client",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "mypy", "clang-format"]
+
+[tool.scikit-build]
+cmake.build-type = "Release"
+wheel.packages = ["kiln_py"]

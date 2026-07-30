@@ -3,23 +3,40 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  build-and-test:
+  cpp:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang-format clang-tidy cmake ninja-build
+        run: sudo apt-get update && sudo apt-get install -y clang-format clang-tidy cmake ninja-build python3-dev
 
       - name: clang-format check
         run: |
-          find src tests -name '*.h' -o -name '*.cpp' | xargs clang-format --dry-run --Werror
+          find csrc tests/cpp -name '*.h' -o -name '*.cpp' | xargs clang-format --dry-run --Werror
 
-      - name: Configure (sanitizers on)
-        run: cmake -B build -G Ninja -DKILN_SANITIZE=ON
+      - name: Configure (sanitizers on, pybind off for the C++-only job)
+        run: cmake -B build -G Ninja -DKILN_SANITIZE=ON -DKILN_BUILD_PYBIND=OFF
 
       - name: Build
         run: cmake --build build
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install extension + dev deps
+        run: pip install -e ".[dev]"
+
+      - name: mypy
+        run: mypy kiln_py
+
+      - name: pytest (boundary sanity: kiln_py._C.ping() == "pong")
+        run: pytest tests/py

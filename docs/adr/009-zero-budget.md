@@ -1,4 +1,4 @@
-# ADR-006: Zero-budget constraint
+# ADR-009: Zero-budget constraint
 
 **Status:** Accepted (Revision 1.1)
 

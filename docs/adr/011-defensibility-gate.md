@@ -1,4 +1,4 @@
-# ADR-008: Defensibility gate
+# ADR-011: Defensibility gate
 
 **Status:** Accepted (Revision 1.1)
 

@@ -1,0 +1,25 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang-format clang-tidy cmake ninja-build
+
+      - name: clang-format check
+        run: |
+          find src tests -name '*.h' -o -name '*.cpp' | xargs clang-format --dry-run --Werror
+
+      - name: Configure (sanitizers on)
+        run: cmake -B build -G Ninja -DKILN_SANITIZE=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

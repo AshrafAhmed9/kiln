@@ -47,6 +47,21 @@ def test_metrics_endpoint_reflects_a_real_completion():
         before, "kiln_completions_total")
 
 
+def test_local_status_page_reads_the_same_process_metrics():
+    before = client.get("/status/data").json()
+    client.post("/v1/completions", json={"prompt": "status test", "max_tokens": 3})
+    after = client.get("/status/data").json()
+    page = client.get("/status")
+
+    assert after["completions_total"] == before["completions_total"] + 1
+    assert after["tokens_generated_total"] == before["tokens_generated_total"] + 3
+    assert after["completion_latency_count"] == before["completion_latency_count"] + 1
+    assert page.status_code == 200
+    assert "Local session status" in page.text
+    assert "not production traffic" in page.text
+    assert 'fetch("/status/data")' in page.text
+
+
 def test_completion_returns_openai_shaped_response():
     response = client.post("/v1/completions", json={
         "prompt": "hello",

@@ -16,6 +16,7 @@ add_executable(kiln_cpp_tests
   executor/model_test.cpp
   kv/kv_cache_test.cpp
   kv/paged_kv_cache_test.cpp
+  kv/prefix_cache_measurement_test.cpp
   executor/paged_attention_test.cpp
   executor/sampler_test.cpp
   executor/batch_test.cpp

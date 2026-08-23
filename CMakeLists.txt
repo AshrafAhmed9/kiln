@@ -31,6 +31,7 @@ add_library(kiln_cpp STATIC
   csrc/executor/model.cpp
   csrc/kv/kv_cache.cpp
   csrc/kv/paged_kv_cache.cpp
+  csrc/kv/prefix_cache_measurement.cpp
   csrc/executor/paged_attention.cpp
   csrc/executor/sampler.cpp
   csrc/executor/batch.cpp
@@ -71,3 +72,9 @@ endif()
 
 enable_testing()
 add_subdirectory(tests/cpp)
+
+# This intentionally measures a seeded local workload, not traffic. Keeping
+# it as a small C++ executable means it exercises the same paged-cache code
+# that serves sequences instead of estimating sharing from a spreadsheet.
+add_executable(kiln_prefix_cache_benchmark bench/prefix_cache_hit_rate.cpp)
+target_link_libraries(kiln_prefix_cache_benchmark PRIVATE kiln_cpp)

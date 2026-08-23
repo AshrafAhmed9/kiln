@@ -451,3 +451,33 @@ invented postmortem would just be a fabricated claim. See
 docs/learning/phase-18.md for the full reasoning. `docs/postmortems/`
 contains a template only, with no incident in it, because there has been
 none.
+
+## Phase 21 — Synthetic prefix-cache measurement and local status
+
+**What:** a small C++ executable runs a fixed, seeded cache workload against
+the actual `PagedKVCache`. It creates one 16-token shared system prompt,
+warms four 20-token prompt variants, then starts 80 conversations from those
+variants and makes each one write one to four divergent tokens. The program
+counts a prefix-block hit only when a logical prefix-block lookup reuses an
+already materialized physical cache block. In the checked workload, it
+measured 248 hits in 252 lookups (98.41%) and 80 copy-on-write events. The
+API also serves `/status`, a plain HTML page that asks `/status/data` for the
+same real Prometheus counters exposed at `/metrics`.
+
+**Why it works:** `PagedSequence::Fork` increments the reference count of
+each existing prefix block instead of allocating it again, so counting those
+references directly measures the sharing the cache actually performed. Each
+variant ends mid-block; the first divergent write therefore has to take the
+cache's copy-on-write branch, proving the workload exercises both sharing and
+the safe split afterward. The status data reads Prometheus collector samples,
+not a second set of application counters, so the status page and `/metrics`
+cannot drift into reporting different values.
+
+**What it cost:** the hit rate is intentionally not a general claim about
+users, the playground, or a deployed service. It describes one favorable,
+named synthetic workload and will change with its prompt-sharing pattern.
+The status page also avoids p99, QPS, uptime, and cost figures because this
+local process has neither the traffic nor the measurement history needed to
+support them. Streaming requests are not included in its completion/latency
+counters because those counters were not previously wired for the streaming
+path; the page names the scope rather than quietly implying otherwise.

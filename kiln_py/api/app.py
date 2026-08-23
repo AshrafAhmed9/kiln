@@ -25,7 +25,12 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 
-from kiln_py.metrics import completion_latency_seconds, completions_total, tokens_generated_total
+from kiln_py.metrics import (
+    completion_latency_seconds,
+    completions_total,
+    local_session_snapshot,
+    tokens_generated_total,
+)
 
 from kiln_py import _C
 from kiln_py.runtime.byte_tokenizer import write_byte_level_tokenizer_json
@@ -167,6 +172,7 @@ def metrics():
 
 
 _PLAYGROUND_HTML = (Path(__file__).parent / "playground.html").read_text()
+_STATUS_HTML = (Path(__file__).parent / "status.html").read_text()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -176,3 +182,19 @@ def playground():
     are same-origin and need no CORS configuration at all.
     """
     return _PLAYGROUND_HTML
+
+
+@app.get("/status", response_class=HTMLResponse)
+def status_page():
+    """Shows the counters accumulated by this local server process only.
+
+    This is intentionally separate from the playground: the page is useful for
+    checking a demo session, but its values reset on restart and are not a
+    production dashboard.
+    """
+    return _STATUS_HTML
+
+
+@app.get("/status/data")
+def status_data():
+    return local_session_snapshot()

@@ -35,6 +35,14 @@ rigorous.
 | + INT8 quantization | memory footprint · reconstruction error | **3.76×** smaller · MSE **3.5×10⁻⁵** (CPU speed *not* faster — no INT8 kernel; see below) |
 | + speculative decoding | target-model calls per token | **1.0×** (no reduction) — both models are independently untrained, so the draft's guesses essentially never match the target's; see below |
 
+The paged-cache sharing path also has a separate seeded workload:
+`cmake --build build --target kiln_prefix_cache_benchmark &&
+./build/kiln_prefix_cache_benchmark`. It ran 80 synthetic conversations
+with a shared system prompt and four prompt variants, and measured **248
+hits in 252 prefix-block lookups (98.41%)**. This is a local, synthetic
+cache-mechanism measurement -- not a rate from users or playground
+traffic.
+
 **Two rows that need explaining, not hiding:**
 
 - **INT8 shows no CPU speedup.** The memory reduction and the accuracy
@@ -168,9 +176,9 @@ the itemized, nothing-hidden list of what's actually been measured versus
 what's honestly still missing. Nothing here claims more than what was
 actually run and checked.
 
-As of this writing: **94 automated tests pass** (49 on the C++ side,
-checked under memory-safety tooling; 45 on the Python side), and the
-whole thing has been built and run inside a real Docker container.
+As of this writing: the checked-in suites include **51 C++ tests**
+(including memory-safety tooling) and the Python API/control-plane tests.
+The whole thing has also been built and run inside a real Docker container.
 
 ## Try it
 
@@ -183,7 +191,8 @@ PYTHONPATH=. python3 -m pytest tests/py                     # the Python side
 bash demo.sh                                                # the full five-minute tour
 ```
 
-Then open `http://localhost:8420/` for the playground, or read
+Then open `http://localhost:8420/` for the playground and
+`http://localhost:8420/status` for this local process's counters, or read
 `docs/writeups/` for three longer explanations of the most interesting
 parts (the shared-memory conversation cache, the "how do we know it's
 still right" testing philosophy, and what shrinking a model actually

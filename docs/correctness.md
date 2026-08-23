@@ -71,3 +71,28 @@ produces displayable text, when a byte-level tokenizer's real contract is
 narrower than that -- it produces bytes, and turning bytes into text is a
 separate, sometimes-lossy step that has to be done deliberately, especially
 one token (one possibly-incomplete character) at a time during streaming.
+
+## Phase 8 — copy-on-write that never actually copied
+
+**What broke:** the first version of `PagedSequence::PrepareWriteSlot`
+allocated a new, private block whenever a shared block needed to be
+written to, but never actually copied the old block's numbers into the new
+one -- so a sequence that diverged from a shared prefix would have started
+writing into (and, worse, reading stale garbage out of) an uninitialized
+block.
+
+**How it was caught:** before any test was even run, while re-reading the
+function against its own documentation comment and noticing the comment
+claimed a copy that the code never performed.
+
+**The fix:** added `PagedKVCache::CopyBlockContents`, which copies both K
+and V numbers, at every layer, from the old block into the new one, and
+call it at the exact moment a shared block needs to be written to.
+
+**What I misunderstood:** I wrote the allocate-a-new-block half of
+copy-on-write and treated that as if it were the whole mechanism, when
+allocating room and actually copying the data into it are two separate
+steps -- skipping the second one leaves the "write" correct but the
+"copy" fictional. The lesson generalizes: a function's own comment
+describing what it does is worth treating as a claim to verify against the
+code, not just documentation to trust.

@@ -30,8 +30,11 @@ add_library(kiln_cpp STATIC
   csrc/executor/swiglu.cpp
   csrc/executor/model.cpp
   csrc/kv/kv_cache.cpp
+  csrc/kv/paged_kv_cache.cpp
+  csrc/executor/paged_attention.cpp
   csrc/executor/sampler.cpp
   csrc/executor/batch.cpp
+  csrc/quant/quantize.cpp
 )
 target_include_directories(kiln_cpp PUBLIC csrc)
 target_link_libraries(kiln_cpp PUBLIC nlohmann_json::nlohmann_json)

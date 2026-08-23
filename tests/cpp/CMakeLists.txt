@@ -15,8 +15,12 @@ add_executable(kiln_cpp_tests
   executor/attention_test.cpp
   executor/model_test.cpp
   kv/kv_cache_test.cpp
+  kv/paged_kv_cache_test.cpp
+  executor/paged_attention_test.cpp
   executor/sampler_test.cpp
   executor/batch_test.cpp
+  quant/quantize_test.cpp
+  executor/parity_harness_test.cpp
 )
 target_link_libraries(kiln_cpp_tests PRIVATE kiln_cpp gtest_main)
 

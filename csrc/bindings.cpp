@@ -11,6 +11,7 @@
 #include "executor/model.h"
 #include "executor/sampler.h"
 #include "kv/kv_cache.h"
+#include "quant/quantize.h"
 #include "tokenizer/bpe.h"
 
 namespace py = pybind11;
@@ -68,6 +69,23 @@ int32_t SampleFromLogits(py::array_t<float> logits,
                 previous_tokens, rng);
 }
 
+// Wraps QuantizeInt8PerChannel for Python: takes a 2D numpy array, returns
+// (quantized int8 array, per-row scales) -- used to cross-check this
+// implementation against the independent Python reference in
+// tools/quantize_ref.py (see tests/py/test_quantize.py).
+py::tuple QuantizeInt8PerChannelPy(py::array_t<float> weights) {
+  auto buf = weights.request();
+  int64_t rows = buf.shape[0];
+  int64_t cols = buf.shape[1];
+
+  py::array_t<int8_t> quantized({rows, cols});
+  py::array_t<float> scales(rows);
+  QuantizeInt8PerChannel(static_cast<const float*>(buf.ptr), rows, cols,
+                         static_cast<int8_t*>(quantized.request().ptr),
+                         static_cast<float*>(scales.request().ptr));
+  return py::make_tuple(quantized, scales);
+}
+
 }  // namespace kiln
 
 PYBIND11_MODULE(_C, m) {
@@ -116,4 +134,7 @@ PYBIND11_MODULE(_C, m) {
       .def_static("load", &kiln::BpeTokenizer::Load)
       .def("encode", &kiln::BpeTokenizer::Encode)
       .def("decode", &kiln::DecodeToBytes);
+
+  m.def("quantize_int8_per_channel", &kiln::QuantizeInt8PerChannelPy,
+        py::arg("weights"));
 }

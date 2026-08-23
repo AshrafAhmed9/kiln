@@ -67,15 +67,43 @@ underlying code is too clever and should be simplified first (ADR-010).
   activations and logits for later parity comparison (not yet exercised
   against a real download in this offline session -- see ADR-009).
 
-## Honest state of Part I, as of this session
+## Part II additions
 
-Every C++ unit test (29) and every Python test (13) passes, including
-under AddressSanitizer/UndefinedBehaviorSanitizer. The pybind11 boundary
-was verified end to end (Python calling the real C++ model, not a stub).
-What has **not** been verified in this session: numerical parity against a
-real HuggingFace checkpoint (needs a real `transformers` install; deferred
-to Kaggle/local per ADR-009), tokenizer conformance against real text on a
-large fixture set, and the scheduler wired to the API for genuine
-concurrent multi-request continuous batching (the API currently drives the
-single-sequence generation loop directly). These are named here rather than
-implied to be done.
+- `csrc/kv/paged_kv_cache.{h,cpp}` and `csrc/executor/paged_attention.{h,cpp}`
+  — the block-table KV allocator with copy-on-write prefix sharing, and a
+  CPU attention variant that reads through it; proven to match contiguous
+  attention exactly.
+- `csrc/quant/quantize.{h,cpp}` — INT8 per-channel and INT4 group-wise
+  (packed) quantization, cross-checked against `tools/quantize_ref.py`
+  (an independent Python reimplementation) through the pybind11 boundary.
+- `kiln_py/runtime/speculative_decode.py` — the rejection-sampling
+  speculative decoding loop; proven token-for-token exact against direct
+  greedy decoding in `tests/py/test_speculative_decode.py`.
+- `kiln_py/runtime/tensor_parallel_sim.py` — column-parallel and
+  row-parallel matrix multiplication, simulated across N ranks in numpy,
+  proven exact against the unsharded computation.
+- `csrc/kernels/cuda/*.cu` and `csrc/kernels/triton/rope.py` — hand-written
+  CUDA (attention, RMSNorm, greedy-argmax sampling) and Triton (RoPE, both
+  ways for the ADR-007 comparison) kernels. **Written to spec, not
+  compiled or run** -- see the honest-state note below.
+
+## Honest state, as of this session
+
+**Part I:** every C++ unit test and every Python test passes, including
+under AddressSanitizer/UndefinedBehaviorSanitizer (60/60 total across both
+parts as of Phase 12 -- see `BENCHMARKS.md` for the exact count per part).
+The pybind11 boundary was verified end to end (Python calling the real
+C++ model, not a stub). The scheduler is not yet wired to the API for
+genuine concurrent multi-request continuous batching (the API currently
+drives the single-sequence generation loop directly).
+
+**Part II:** this machine has no NVIDIA GPU, so everything under
+`csrc/kernels/` is written but genuinely **unverified** -- not compiled,
+not run, not benchmarked. Everything else in Part II (paged KV cache,
+quantization, speculative decoding, the parity-harness self-test, and
+tensor-parallel sharding math) *is* real, CPU-testable, and tested for
+real, but each has a named gap versus the plan's full GPU-based
+deliverable: no real perplexity/KL table (needs a real checkpoint and
+WikiText-2), no real decode-speedup measurement, no real multi-GPU scaling
+efficiency. All of these are deferred to Kaggle T4 time, per ADR-009 --
+named explicitly here and in `BENCHMARKS.md`, not implied to be done.

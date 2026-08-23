@@ -59,6 +59,14 @@ class Model {
 
   const ModelConfig& config() const { return config_; }
 
+  // Folds a trained LoRA adapter into one weight matrix of one layer, in
+  // place -- see docs/learning/phase-14.md. `which` selects the matrix:
+  // "wq", "wk", "wv", "wo", "w_gate", "w_up", or "w_down". Throws on an
+  // unrecognized name rather than silently doing nothing.
+  void MergeLoraIntoLayer(int64_t layer_idx, const std::string& which,
+                          const float* lora_a, const float* lora_b,
+                          int64_t rank, float scale);
+
  private:
   ModelConfig config_;
   std::vector<float> tok_embeddings;  // [vocab_size, dim]

@@ -1,6 +1,7 @@
 #include "executor/paged_attention.h"
 
 #include <cstring>
+#include <stdexcept>
 
 #include <gtest/gtest.h>
 
@@ -54,6 +55,24 @@ TEST(PagedAttention, MatchesContiguousAttentionExactly) {
   for (size_t i = 0; i < contiguous_out.size(); ++i) {
     EXPECT_NEAR(contiguous_out[i], paged_out[i], 1e-5f);
   }
+}
+
+// If a caller hands PagedAttention fewer blocks than kv_len actually
+// needs, reading past the end of the block table would otherwise be
+// silent undefined behavior -- this must be a clear, catchable error
+// instead.
+TEST(PagedAttention, TooFewBlocksForKvLenThrows) {
+  int64_t n_heads = 1, n_kv_heads = 1, head_dim = 2;
+  PagedKVCache cache(1, 4, /*block_size=*/2, n_kv_heads, head_dim);
+  std::vector<int64_t> block_table = {cache.AllocateBlock()};  // only 1 block: room for 2 kv positions
+
+  float q[2] = {1, 0};
+  std::vector<float> out(2);
+
+  EXPECT_THROW(
+      PagedAttention(q, cache, 0, block_table, out.data(), /*seq_len=*/1,
+                     /*kv_len=*/4, n_heads, n_kv_heads, head_dim, 0),
+      std::invalid_argument);
 }
 
 }  // namespace

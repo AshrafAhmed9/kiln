@@ -4,6 +4,7 @@
 
 #include <cstring>
 #include <random>
+#include <stdexcept>
 
 namespace kiln {
 namespace {
@@ -21,6 +22,19 @@ TEST(PagedKVCache, AllocatingAndFreeingReturnsToTheSamePoolSize) {
   cache.DecRef(a);
   cache.DecRef(b);
   EXPECT_EQ(cache.num_free_blocks(), 4);  // no leak: every freed block comes back
+}
+
+TEST(PagedKVCache, DoubleFreeingABlockThrowsInsteadOfSilentlyCorruptingRefCounts) {
+  PagedKVCache cache(1, 4, 2, 1, 2);
+  int64_t block = cache.AllocateBlock();
+  cache.DecRef(block);  // returns it to the pool -- ref count is now 0
+
+  // Freeing it again is a real caller bug (a double-free): this must be
+  // reported the same way in every build, not just crash an assert in
+  // debug builds while silently corrupting the free pool in release ones
+  // (the exact mistake already made and fixed once in Arena -- see
+  // docs/correctness.md).
+  EXPECT_THROW(cache.DecRef(block), std::runtime_error);
 }
 
 TEST(PagedKVCache, RunningOutOfBlocksFailsClosedInsteadOfCrashing) {

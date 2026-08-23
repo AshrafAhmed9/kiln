@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace kiln {
 
@@ -47,9 +48,34 @@ int FromNibble(uint8_t nibble) { return static_cast<int>(nibble) - 8; }
 
 }  // namespace
 
+namespace {
+
+// Both functions below assume the row splits evenly into whole groups, and
+// that each group packs evenly into whole bytes (two 4-bit values per
+// byte). If either isn't true, the group boundaries silently drift out of
+// alignment with the byte boundaries -- a caller would get back numbers
+// that don't correspond to what they think they quantized, with no error
+// telling them why. Checking this once, in one place, is cheaper than
+// debugging that mismatch after the fact.
+void CheckInt4Preconditions(int64_t cols, int64_t group_size) {
+  if (group_size % 2 != 0) {
+    throw std::invalid_argument(
+        "QuantizeInt4GroupWise: group_size must be even, so every group "
+        "packs into whole bytes");
+  }
+  if (cols % group_size != 0) {
+    throw std::invalid_argument(
+        "QuantizeInt4GroupWise: group_size must evenly divide cols, or "
+        "the last group would be silently truncated");
+  }
+}
+
+}  // namespace
+
 void QuantizeInt4GroupWise(const float* weights, int64_t rows, int64_t cols,
                           int64_t group_size, uint8_t* out_packed,
                           float* out_scales) {
+  CheckInt4Preconditions(cols, group_size);
   int64_t groups_per_row = cols / group_size;
   int64_t bytes_per_row = cols / 2;
 
@@ -82,6 +108,7 @@ void QuantizeInt4GroupWise(const float* weights, int64_t rows, int64_t cols,
 void DequantizeInt4GroupWise(const uint8_t* packed, const float* scales,
                             int64_t rows, int64_t cols, int64_t group_size,
                             float* out_weights) {
+  CheckInt4Preconditions(cols, group_size);
   int64_t groups_per_row = cols / group_size;
   int64_t bytes_per_row = cols / 2;
 

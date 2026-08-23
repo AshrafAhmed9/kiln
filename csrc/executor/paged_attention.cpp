@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 #include <vector>
 
 namespace kiln {
@@ -14,6 +15,16 @@ void PagedAttention(const float* q, const PagedKVCache& cache, int64_t layer,
   int64_t group_size = n_heads / n_kv_heads;
   float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
   int64_t block_size = cache.block_size();
+
+  // The caller has to have handed us enough blocks to actually cover
+  // kv_len positions -- if not, reading past the end of block_table below
+  // would be silent undefined behavior instead of a clear error pointing
+  // at the actual mistake (the caller under-sized the block table).
+  int64_t blocks_needed = (kv_len + block_size - 1) / block_size;
+  if (static_cast<int64_t>(block_table.size()) < blocks_needed) {
+    throw std::invalid_argument(
+        "PagedAttention: block_table has fewer blocks than kv_len needs");
+  }
 
   // Translates a logical key position (0, 1, 2, ...) into "which physical
   // block, which slot within that block" -- this one line is the entire

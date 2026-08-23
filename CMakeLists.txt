@@ -35,9 +35,19 @@ add_library(kiln_cpp STATIC
   csrc/executor/sampler.cpp
   csrc/executor/batch.cpp
   csrc/quant/quantize.cpp
+  csrc/executor/lora.cpp
 )
 target_include_directories(kiln_cpp PUBLIC csrc)
 target_link_libraries(kiln_cpp PUBLIC nlohmann_json::nlohmann_json)
+
+# This static library gets linked into the _C shared module (below) as
+# well as into the plain test binary. A static library built without
+# position-independent code links fine into a plain executable, but fails
+# on Linux when linked into a *shared* object -- which is exactly what
+# _C is. This worked by coincidence on macOS (where PIC isn't enforced the
+# same way) and only failed when actually building the Docker image on
+# Linux for the first time -- a real, caught-late bug, not a hypothetical.
+set_target_properties(kiln_cpp PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(KILN_BUILD_PYBIND)
   find_package(Python3 COMPONENTS Interpreter Development REQUIRED)

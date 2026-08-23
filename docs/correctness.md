@@ -96,3 +96,45 @@ steps -- skipping the second one leaves the "write" correct but the
 "copy" fictional. The lesson generalizes: a function's own comment
 describing what it does is worth treating as a claim to verify against the
 code, not just documentation to trust.
+
+## Phase 18 — two real bugs, caught only by actually building and running the Docker image
+
+**What broke (bug 1):** the C++ compute library (`kiln_cpp`) was built as
+a plain static library with no position-independent code flag. Linking a
+static library like that into a *shared* object (the `_C` pybind11
+extension) works by coincidence on macOS, but fails outright on Linux.
+
+**How it was caught:** actually running `docker build` against the real
+Dockerfile, on this machine, rather than writing the Dockerfile and
+assuming it would work. The build failed with a wall of linker errors
+("dangerous relocation... recompile with -fPIC").
+
+**The fix:** `set_target_properties(kiln_cpp PROPERTIES
+POSITION_INDEPENDENT_CODE ON)` in `CMakeLists.txt`.
+
+**What I misunderstood:** I had verified this build extensively on one
+platform (macOS, this development machine) and let that stand in for "the
+build works," without noticing that a real, meaningful difference in how
+the two platforms link shared objects meant local verification here
+didn't actually prove anything about Linux, which is where this almost
+always actually gets deployed.
+
+**What broke (bug 2):** after fixing bug 1, the built image's `CMD`
+(`uvicorn ...`) failed with "executable file not found in $PATH." The
+multi-stage Dockerfile's final stage copied installed Python *packages*
+(`site-packages`) from the build stage, but not the installed console
+*scripts* (`/usr/local/bin/uvicorn` and friends) that `pip install` also
+creates.
+
+**How it was caught:** the same way — running the container after fixing
+bug 1 and watching it fail immediately, rather than assuming a
+successful `docker build` meant a working container.
+
+**The fix:** also copy `/usr/local/bin` from the build stage into the
+final stage.
+
+**What I misunderstood:** I treated "the Python packages are installed"
+as equivalent to "the tools built from those packages are available,"
+when `pip install` actually produces two separate things in two separate
+places — and a multi-stage Docker build that copies files explicitly, by
+path, will only include exactly what's named, not "everything pip did."

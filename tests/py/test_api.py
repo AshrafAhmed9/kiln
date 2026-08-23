@@ -19,6 +19,34 @@ def test_healthz():
     assert response.json()["status"] == "ok"
 
 
+def test_playground_page_is_served_and_points_at_the_real_api():
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    # It has to actually call the real endpoint, not a mocked one -- this
+    # is a cheap, real check that the page wasn't quietly pointed
+    # somewhere else during editing.
+    assert "/v1/completions" in response.text
+
+
+def test_metrics_endpoint_reflects_a_real_completion():
+    before = client.get("/metrics").text
+    client.post("/v1/completions", json={"prompt": "metrics test", "max_tokens": 2})
+    after = client.get("/metrics").text
+
+    # A real counter incrementing, not a static/mocked page -- prove it by
+    # actually parsing out the number rather than just checking the text
+    # changed at all.
+    def read_counter(text: str, name: str) -> float:
+        for line in text.splitlines():
+            if line.startswith(name + " "):
+                return float(line.split()[-1])
+        return 0.0
+
+    assert read_counter(after, "kiln_completions_total") > read_counter(
+        before, "kiln_completions_total")
+
+
 def test_completion_returns_openai_shaped_response():
     response = client.post("/v1/completions", json={
         "prompt": "hello",

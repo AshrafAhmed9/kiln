@@ -2,10 +2,12 @@
 
 #include <cstring>
 #include <random>
+#include <stdexcept>
 #include <string>
 
 #include "executor/attention.h"
 #include "executor/gemm.h"
+#include "executor/lora.h"
 #include "executor/rmsnorm.h"
 #include "executor/rope.h"
 #include "executor/swiglu.h"
@@ -115,6 +117,21 @@ void Model::Forward(const int32_t* tokens, int64_t batch_size,
                      int64_t seq_len, const int64_t* valid_lengths,
                      int64_t start_pos, KVCache* cache,
                      float* out_logits) const {
+  // A cache only makes sense for one sentence at a time in this project's
+  // current design (Phase 3's cache is built for a single sequence; batching
+  // several sentences together with no cache at all is Phase 4's separate
+  // case). Passing both together isn't a case anyone should hit on purpose,
+  // so it's rejected loudly here rather than silently doing the wrong thing
+  // (quietly ignoring the cache would be far worse than an error, since the
+  // caller would get an answer back and have no way to know it was computed
+  // without the caching they asked for).
+  if (cache != nullptr && batch_size > 1) {
+    throw std::invalid_argument(
+        "Model::Forward: a KV cache can only be used with batch_size == 1 "
+        "in this project's current design -- see docs/defense.md phase 4/8 "
+        "entries for why batching and caching don't yet combine.");
+  }
+
   int64_t d = config_.hidden_size;
   int64_t q_dim = config_.n_heads * config_.head_dim;
   int64_t kv_dim = config_.n_kv_heads * config_.head_dim;
@@ -213,6 +230,41 @@ void Model::Forward(const int32_t* tokens, int64_t batch_size,
           config_.rms_eps);
   GemmBT(normed.data(), lm_head.data(), out_logits, n_rows, d,
          config_.vocab_size);
+}
+
+void Model::MergeLoraIntoLayer(int64_t layer_idx, const std::string& which,
+                               const float* lora_a, const float* lora_b,
+                               int64_t rank, float scale) {
+  LayerWeights& layer = layers[layer_idx];
+  int64_t d = config_.hidden_size;
+  int64_t q_dim = config_.n_heads * config_.head_dim;
+  int64_t kv_dim = config_.n_kv_heads * config_.head_dim;
+
+  // Every weight matrix in this project is stored [out_features,
+  // in_features] (see LayerWeights' comment in model.h), so merging a
+  // LoRA adapter into any of them is the same operation with different
+  // dimensions -- this table is just "which matrix, and what shape is it."
+  if (which == "wq") {
+    MergeLoraAdapter(layer.wq.data(), lora_a, lora_b, q_dim, d, rank, scale);
+  } else if (which == "wk") {
+    MergeLoraAdapter(layer.wk.data(), lora_a, lora_b, kv_dim, d, rank, scale);
+  } else if (which == "wv") {
+    MergeLoraAdapter(layer.wv.data(), lora_a, lora_b, kv_dim, d, rank, scale);
+  } else if (which == "wo") {
+    MergeLoraAdapter(layer.wo.data(), lora_a, lora_b, d, q_dim, rank, scale);
+  } else if (which == "w_gate") {
+    MergeLoraAdapter(layer.w_gate.data(), lora_a, lora_b, config_.ffn_hidden,
+                     d, rank, scale);
+  } else if (which == "w_up") {
+    MergeLoraAdapter(layer.w_up.data(), lora_a, lora_b, config_.ffn_hidden, d,
+                     rank, scale);
+  } else if (which == "w_down") {
+    MergeLoraAdapter(layer.w_down.data(), lora_a, lora_b, d,
+                     config_.ffn_hidden, rank, scale);
+  } else {
+    throw std::invalid_argument("Model::MergeLoraIntoLayer: unknown matrix "
+                                "name '" + which + "'");
+  }
 }
 
 }  // namespace kiln

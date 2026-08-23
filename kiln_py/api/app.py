@@ -21,8 +21,11 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
+
+from kiln_py.metrics import completion_latency_seconds, completions_total, tokens_generated_total
 
 from kiln_py import _C
 from kiln_py.runtime.byte_tokenizer import write_byte_level_tokenizer_json
@@ -95,8 +98,12 @@ def create_completion(request: CompletionRequest):
             media_type="text/event-stream",
         )
 
-    text = generate(_model, _tokenizer, request.prompt, request.max_tokens,
-                     sampler_config, seed=request.seed)
+    completions_total.inc()
+    with completion_latency_seconds.time():
+        text = generate(_model, _tokenizer, request.prompt, request.max_tokens,
+                         sampler_config, seed=request.seed)
+    tokens_generated_total.inc(request.max_tokens)
+
     return {
         "id": f"cmpl-{uuid.uuid4().hex[:16]}",
         "object": "text_completion",
@@ -152,3 +159,20 @@ def _stream_completion(request: CompletionRequest, sampler_config):
 @app.get("/healthz")
 def healthz():
     return {"status": "ok", "model": _MODEL_NAME}
+
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+_PLAYGROUND_HTML = (Path(__file__).parent / "playground.html").read_text()
+
+
+@app.get("/", response_class=HTMLResponse)
+def playground():
+    """Serves the static playground page (Phase 17) from the same app
+    instance that answers /v1/completions, so the page's fetch() calls
+    are same-origin and need no CORS configuration at all.
+    """
+    return _PLAYGROUND_HTML

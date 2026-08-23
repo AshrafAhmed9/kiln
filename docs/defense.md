@@ -336,3 +336,118 @@ multi-GPU behavior (NCCL communication, actual scaling efficiency, real
 communication overhead), since no multi-GPU hardware was available in this
 session. That real measurement is genuinely deferred to when GPU time
 (Kaggle, per ADR-009) is available.
+
+## Phase 13 — Evaluation infrastructure
+
+**What:** exact-match task scoring, a perplexity calculator, bootstrap
+confidence intervals, a paired regression gate (candidate vs. baseline),
+and a canary-replay diffing tool -- the machinery for deciding whether a
+model change made things better, worse, or just noisily different.
+
+**Why it works:** see docs/learning/phase-13.md -- the short version is
+that a single average score can't tell noise from a real regression, but
+resampling the same results many times and looking at how much the
+average wobbles can.
+
+**What it cost, and how it was tested:** every piece here is tested
+against small, hand-controlled inputs rather than the real model, and
+deliberately so -- the only model in this project is untrained and random,
+so testing "does the eval math get the right answer" against known,
+constructed cases is a stronger, more honest test than running the real
+model and hoping the numbers look plausible. The regression gate is
+specifically checked both ways: it must flag a candidate that's worse on
+every paired question, and it must NOT flag a candidate whose results are
+just noisily mixed (some better, some worse) -- a gate that only knows how
+to say "yes" isn't a real gate.
+
+## Phase 14 — Adapter-aware serving (fine-tuning itself out of scope)
+
+**What:** given an already-trained LoRA adapter (two small matrices, A and
+B), fold it into a served model's weight matrix once, at load time, so the
+rest of the forward pass runs completely unmodified afterward.
+
+**Why it works:** see docs/learning/phase-14.md -- merging once at load
+time means there's no separate "adapter-aware" code path in the forward
+pass to build and re-verify; the already-tested executor just sees a
+slightly different weight matrix.
+
+**What it cost, stated as plainly as possible:** this phase does **not**
+include actually training a LoRA adapter, a real data pipeline, or the
+multi-GPU scaling study the plan's Phase 14 is centered on -- none of
+those are achievable without a real PyTorch training setup and real
+GPUs, which this session doesn't have. What's built and tested is
+narrower and named precisely: given trained adapter matrices (however
+they were produced), merge them in correctly. The test proves this two
+ways -- a hand-computed matrix check, and confirmation that the merge
+changes a real model's actual output through the real, unmodified forward
+pass, not just at the matrix level in isolation.
+
+## Phase 16 — Multi-tenancy and the control plane
+
+**What:** API keys (generated once, stored only as a SHA-256 hash),
+per-tenant daily token quotas and per-second rate limits (both enforced
+*before* a request runs, not after), and usage metering -- built as its
+own FastAPI service, separate from the plain demo API, sitting in front
+of the same engine.
+
+**Why it works:** see docs/learning/phase-16.md -- hashing means a leaked
+key database is useless on its own; checking quota before doing the work
+is what actually stops a request rather than just recording that it
+happened.
+
+**What was actually proven, and how:** the plan's own two named
+requirements for this phase are both directly tested: hammering one
+tenant's key with repeated requests until its quota trips leaves a second,
+completely unrelated tenant's usage at exactly zero (not corrupted, not
+partially shared) -- and a simulated leaked-key drill (use the key
+successfully, revoke it, confirm the very next request with that same key
+is rejected) passes.
+
+**What it cost:** tenant and usage state lives in memory for this
+session, not a real Postgres database as the plan specifies -- sufficient
+to prove the enforcement logic is correct, not yet a production-ready
+persistence layer. Abuse controls are limited to the quota/rate-limit
+mechanism itself; real content-policy filtering is out of scope (it's
+effectively its own project).
+
+## Phase 17 — The playground
+
+**What:** a single, self-contained static HTML page (no build step, no
+framework) that talks to the real `/v1/completions` endpoint and runs two
+different temperature settings side by side, showing both outputs and
+real measured latency for each.
+
+**Why it works:** it's genuinely the same request the curl/Python
+quickstart examples on the same page show -- there's no separate,
+special-cased code path for the playground versus any other API client.
+
+**What it cost, stated directly:** the plan calls for a Next.js app with
+live quantization-level and speculative-decode toggles. Node was actually
+available while building this; the deviation was a judgment call, not a
+limitation -- see docs/learning/phase-17.md. What's built is a plain
+static page (simpler, zero dependencies, fully readable in one sitting)
+comparing temperature settings, which genuinely is wired end to end right
+now. Comparing quantization levels or speculative decoding live isn't
+possible yet because the API doesn't currently expose more than one
+servable model configuration to switch between -- that's real, named,
+future backend work, not something this page fakes with a toggle that
+does nothing.
+
+## Phase 18 — Launch, users, and operations
+
+**What is real:** the engine builds and runs correctly inside a real
+Docker container (verified on this machine, catching two real bugs in
+the process -- see docs/correctness.md), with Prometheus metrics wired
+to a real `/metrics` endpoint and a docker-compose stack tying the
+engine, Prometheus, and Grafana together.
+
+**What is explicitly, deliberately NOT done, and why that's stated this
+plainly:** there is no public deployment, no real users, no uptime
+history, no incident, and no retention data. Fabricating any of these
+would be a different kind of dishonesty than every other named gap in
+this project (an untrained model, a CPU proxy for a GPU measurement) --
+those are honest substitutes for something real; a fake user count or
+invented postmortem would just be a fabricated claim. See
+docs/learning/phase-18.md for the full reasoning. `docs/postmortems/`
+contains a template only, with no incident in it, because there has been
+none.

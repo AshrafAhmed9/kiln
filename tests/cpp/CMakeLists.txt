@@ -21,6 +21,7 @@ add_executable(kiln_cpp_tests
   executor/batch_test.cpp
   quant/quantize_test.cpp
   executor/parity_harness_test.cpp
+  executor/lora_test.cpp
 )
 target_link_libraries(kiln_cpp_tests PRIVATE kiln_cpp gtest_main)
 

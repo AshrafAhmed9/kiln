@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <random>
+#include <stdexcept>
 
 #include <gtest/gtest.h>
 
@@ -50,6 +51,29 @@ TEST(QuantizeInt8, AllZeroRowDoesNotDivideByZero) {
 
   for (int8_t q : quantized) EXPECT_EQ(q, 0);
   EXPECT_TRUE(std::isfinite(scales[0]));
+}
+
+TEST(QuantizeInt4, OddGroupSizeThrowsInsteadOfSilentlyMisaligningBytes) {
+  std::vector<float> weights(8, 1.0f);
+  std::vector<uint8_t> packed(4);
+  std::vector<float> scales(4);
+  EXPECT_THROW(
+      QuantizeInt4GroupWise(weights.data(), 1, 8, /*group_size=*/3,
+                            packed.data(), scales.data()),
+      std::invalid_argument);
+}
+
+TEST(QuantizeInt4, GroupSizeNotDividingColsThrows) {
+  // 6 is even (so it isn't rejected for that reason), but it doesn't
+  // divide 8 columns evenly -- exactly the silent-truncation case this
+  // check exists to catch.
+  std::vector<float> weights(8, 1.0f);
+  std::vector<uint8_t> packed(4);
+  std::vector<float> scales(4);
+  EXPECT_THROW(
+      QuantizeInt4GroupWise(weights.data(), 1, 8, /*group_size=*/6,
+                            packed.data(), scales.data()),
+      std::invalid_argument);
 }
 
 TEST(QuantizeInt4, RoundTripStaysWithinOneGroupStep) {

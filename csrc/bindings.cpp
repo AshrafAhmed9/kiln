@@ -25,8 +25,20 @@ std::string Ping() { return "pong"; }
 // do, but which would be an easy way to accidentally corrupt memory from
 // the Python side), this takes and returns ordinary numpy arrays and does
 // the pointer plumbing itself, once, in this one file.
+// Every numpy array accepted across the boundary below is declared
+// c_style|forcecast: this makes pybind11 copy the data into a plain,
+// contiguous, correctly-typed buffer first if the caller ever passes
+// something else (a transposed view, a non-contiguous slice, a different
+// dtype). Without this, the code below reads the array's raw pointer as
+// if it were a flat contiguous buffer regardless of what it actually is
+// -- silently reading the wrong numbers instead of failing.
+using ContiguousFloatArray =
+    py::array_t<float, py::array::c_style | py::array::forcecast>;
+using ContiguousInt32Array =
+    py::array_t<int32_t, py::array::c_style | py::array::forcecast>;
+
 py::array_t<float> ModelForward(const Model& model,
-                                 py::array_t<int32_t> tokens,
+                                 ContiguousInt32Array tokens,
                                  int64_t batch_size, int64_t seq_len,
                                  py::object valid_lengths, int64_t start_pos,
                                  KVCache* cache) {
@@ -59,7 +71,7 @@ py::bytes DecodeToBytes(const BpeTokenizer& tokenizer,
   return py::bytes(tokenizer.Decode(ids));
 }
 
-int32_t SampleFromLogits(py::array_t<float> logits,
+int32_t SampleFromLogits(ContiguousFloatArray logits,
                           const SamplerConfig& config,
                           const std::vector<int32_t>& previous_tokens,
                           uint32_t seed) {
@@ -73,7 +85,7 @@ int32_t SampleFromLogits(py::array_t<float> logits,
 // (quantized int8 array, per-row scales) -- used to cross-check this
 // implementation against the independent Python reference in
 // tools/quantize_ref.py (see tests/py/test_quantize.py).
-py::tuple QuantizeInt8PerChannelPy(py::array_t<float> weights) {
+py::tuple QuantizeInt8PerChannelPy(ContiguousFloatArray weights) {
   auto buf = weights.request();
   int64_t rows = buf.shape[0];
   int64_t cols = buf.shape[1];

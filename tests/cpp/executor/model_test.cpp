@@ -1,6 +1,7 @@
 #include "executor/model.h"
 
 #include <cmath>
+#include <stdexcept>
 
 #include <gtest/gtest.h>
 
@@ -22,6 +23,24 @@ ModelConfig TinyConfig() {
   config.rms_eps = 1e-5f;
   config.rope_theta = 10000.0f;
   return config;
+}
+
+// A cache only makes sense for one sentence at a time in this project's
+// current design -- passing both a cache and more than one sentence at
+// once must fail loudly rather than silently ignore the cache the caller
+// asked for (see the comment at the top of Model::Forward).
+TEST(Model, PassingACacheWithMoreThanOneSequenceThrows) {
+  ModelConfig config = TinyConfig();
+  Model model = Model::LoadRandom(config, /*seed=*/4);
+  KVCache cache(config.n_layers, config.max_seq_len, config.n_kv_heads,
+                config.head_dim);
+  int32_t tokens[4] = {1, 2, 3, 4};
+  std::vector<float> logits(4 * config.vocab_size);
+
+  EXPECT_THROW(
+      model.Forward(tokens, /*batch_size=*/2, /*seq_len=*/2, nullptr, 0,
+                    &cache, logits.data()),
+      std::invalid_argument);
 }
 
 TEST(Model, ProducesLogitsOfTheRightShape) {

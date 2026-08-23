@@ -1,6 +1,5 @@
 #include "kv/paged_kv_cache.h"
 
-#include <cassert>
 #include <cstring>
 #include <stdexcept>
 
@@ -34,8 +33,18 @@ int64_t PagedKVCache::AllocateBlock() {
 void PagedKVCache::IncRef(int64_t block_id) { ++ref_counts_[block_id]; }
 
 void PagedKVCache::DecRef(int64_t block_id) {
-  assert(ref_counts_[block_id] > 0 &&
-         "DecRef on a block nobody currently owns -- this would double-free");
+  // This mirrors a mistake already made and fixed once in this project
+  // (Arena::Allocate, Phase 0 -- see docs/correctness.md): a debug-only
+  // assert here would mean debug builds crash loudly on a double-free
+  // while release builds silently let the reference count go negative
+  // and never give the block back to the free pool. One rule, in every
+  // build: a double-free is a real caller bug, so it's reported the same
+  // way every time, not just when assertions happen to be compiled in.
+  if (ref_counts_[block_id] <= 0) {
+    throw std::runtime_error(
+        "PagedKVCache::DecRef called on a block nobody currently owns -- "
+        "this would double-free a block");
+  }
   --ref_counts_[block_id];
   if (ref_counts_[block_id] == 0) free_blocks_.push_back(block_id);
 }

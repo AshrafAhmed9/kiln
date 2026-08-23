@@ -1,56 +1,163 @@
 # Kiln
 
-A vLLM-class LLM serving engine, built hybrid the way real engines are
-actually built: **Python orchestrates** (API, scheduler, control plane),
-**C++/CUDA computes** (forward pass, kernels, KV memory) — verified at every
-step against a HuggingFace reference by a numerical parity harness. Full
-plan: [`../KILN PLAN.md`](../KILN%20PLAN.md).
+Kiln is an LLM serving engine built from scratch — the same kind of
+system that runs behind a chat product, but written by hand instead of
+imported. Python handles the traffic (requests, scheduling, accounts);
+C++ does the actual thinking (reading the model's weights, running the
+math, remembering the conversation). Every piece is checked against a
+reference implementation before it's trusted, and every shortcut this
+project takes is written down plainly, not hidden.
 
-Status: **Part I (Phases 0–6) complete; Part II (Phases 7–12) complete
-wherever CPU-testable.** Part I is a CPU-only, correct continuous-batching
-LLM server: safetensors loader, byte-level BPE tokenizer, a full
-Llama-architecture forward pass (GEMM/RMSNorm/RoPE/GQA attention/SwiGLU), a
-contiguous KV cache with seeded sampling, padded static batching, an
-Orca-style continuous-batching scheduler, and an OpenAI-compatible API with
-SSE streaming. Part II adds a paged, copy-on-write KV cache; INT8/INT4
-quantization (cross-checked against an independent Python reference);
-speculative decoding (**proven token-for-token exact against direct greedy
-decoding**, its strongest correctness result); a self-test proving the
-parity methodology actually catches a real class of bug; and tensor-parallel
-sharding math proven correct via CPU simulation. 60/60 tests pass (40 C++
-under ASan/UBSan, 20 Python).
+**One sentence:** point Kiln at a model's raw weights, and it serves
+chat-style requests — many at once, remembering what it's already read,
+with the option to shrink the model down for speed — the way a real,
+production LLM server works, minus the parts that need a rented GPU or a
+real audience to build honestly.
 
-**Honestly incomplete, on purpose:** this machine has no NVIDIA GPU, so
-Phase 7's CUDA/Triton kernels are written to spec but **not compiled or
-run** in this session — real GPU work (kernel benchmarks, real
-quantization accuracy/latency tables, real speculative-decoding speedups,
-real multi-GPU tensor-parallel scaling) is deferred to the Kaggle T4 path
-the plan already budgets for (ADR-009). No real trained checkpoint has been
-run through any of this code either (no HF install offline), so there is
-no verified numerical parity against the HuggingFace reference yet. See
-`docs/walkthrough.md`'s "Honest state" section and `BENCHMARKS.md` for the
-full, itemized list of what's proven vs. deferred.
+## What actually works right now
 
-## Layout
+Kiln can load a model, turn text into the numbers it understands and
+back, generate new text one word at a time while remembering everything
+it's already read, serve several people at once fairly, and answer over
+a normal web API that other tools (like the `openai` Python package)
+already know how to talk to. On top of that: a memory system that shares
+identical prompts between conversations instead of storing them twice; a
+way to shrink the model's numbers down for less memory use; a proven
+(not just claimed) trick for generating text faster using a second,
+smaller model as a scout; API keys and usage limits for multiple
+separate users; and a small web page to try all of it.
+
+**What doesn't work yet, and why, in one line each:** the GPU-only pieces
+(the hand-written fast kernels) are written but never compiled, because
+this was built on a machine with no NVIDIA GPU. Nothing has been checked
+against a real, trained model's answers, because running one needs an
+internet-heavy install this environment didn't have. And nobody has
+actually used this — there's no live website, no real users, no incident
+that ever happened — because that would take an actual public launch,
+which is a decision for later, not something to fake. Every one of these
+is written down in detail, not glossed over — see **Honest status**
+below.
+
+## How it fits together
+
+```mermaid
+flowchart TD
+    client["A client<br/>(curl, the openai package, a browser)"]
+
+    subgraph py ["Python — decides what happens"]
+        API["Web API<br/>(OpenAI-shaped requests)"]
+        SCHED["Scheduler<br/>(who gets to run right now)"]
+        CP["Control plane<br/>(API keys, usage limits)"]
+    end
+
+    subgraph cpp ["C++ — does the actual thinking"]
+        MODEL["The model itself<br/>(reads weights, runs the math)"]
+        MEM["Memory<br/>(remembers the conversation so far)"]
+    end
+
+    client --> API --> SCHED --> MODEL
+    CP -.->|checks the key, checks the limit| API
+    MODEL <--> MEM
+```
+
+**Why split it this way?** Deciding *who gets to talk to the model next*
+is a policy question — it doesn't need to be fast, it needs to be easy to
+get right and easy to change. Actually *running* the model is a raw-speed
+question. Keeping those two concerns in two different languages, talking
+through one narrow, well-defined bridge, is exactly how real production
+engines (the ones this project is modeled on) are built — it's not a
+compromise, it's the standard shape of the thing.
+
+## The big picture (what each piece is for)
+
+- **Reading a model's weights and turning text into numbers.** A model
+  file is opened without copying it into memory twice, and a sentence is
+  turned into a list of numbers (and back) the same way real tokenizers
+  do it.
+- **The forward pass.** The actual "thinking" — read the conversation so
+  far, decide what matters, produce a guess at the next word. Written
+  from scratch, checked piece by piece.
+- **Remembering the conversation (the cache).** Redoing all that thinking
+  for every single new word would be wasteful — the cache remembers what
+  was already computed, and a second, more advanced version shares
+  identical prompts between separate conversations instead of storing
+  them twice.
+- **Serving many people at once.** New conversations join in and
+  finished ones leave immediately, instead of everyone waiting for the
+  slowest conversation in the batch to finish before anyone new can
+  start.
+- **Shrinking the model down (quantization).** Trading a little precision
+  in the model's numbers for a lot less memory — with the accuracy cost
+  measured, not assumed.
+- **A faster way to generate text (speculative decoding).** A smaller,
+  faster model guesses several words ahead; the real model checks all the
+  guesses in one pass. Proven — not just claimed — to produce the exact
+  same answer as not using the shortcut at all.
+- **Accounts and limits.** Separate users, each with their own key and
+  their own usage limit, that can't interfere with each other.
+- **Checking whether a change made things better or worse.** Infrastructure
+  for comparing two versions honestly, using statistics that can tell a
+  real improvement apart from random noise.
+
+## What each piece is actually made of (for anyone reading the code)
+
+| Piece | Where | What it's built from |
+|---|---|---|
+| Reading model weights | `csrc/loader/` | opens the file without copying it, reads a small directory describing where each number lives |
+| Turning text into numbers | `csrc/tokenizer/` | the standard "merge common pairs of letters together" approach real tokenizers use |
+| The forward pass | `csrc/executor/` | matrix multiplication, a normalizing step, the "attention" mechanism, and a small decision-making network — chained together |
+| Remembering the conversation | `csrc/kv/` | a straightforward version, and an advanced version that shares memory between conversations and only copies it the moment two conversations actually diverge |
+| Choosing the next word | `csrc/executor/sampler.*` | always picking the best guess, or picking with some controlled randomness |
+| Shrinking the model | `csrc/quant/` | representing many numbers with one shared "how big are these, roughly" value plus small individual differences |
+| Deciding who runs next | `kiln_py/scheduler/` | a waiting line and a running list, moving people between them as room opens up |
+| The faster generation trick | `kiln_py/runtime/speculative_decode.py` | a small model guesses, a big model checks all the guesses in one go |
+| The web API | `kiln_py/api/` | matches the shape of OpenAI's own API, so existing tools work against it unmodified |
+| Accounts and limits | `kiln_py/control_plane/` | keys that are never stored in a readable form, and limits checked *before* letting a request run |
+
+## Honest status
+
+Every claim above has a receipt. `docs/walkthrough.md` has the full,
+plain-language tour; `docs/defense.md` explains, phase by phase, what was
+built and exactly what it cost; `docs/correctness.md` is a running list
+of real bugs this project found in itself (and how); `BENCHMARKS.md` has
+the itemized, nothing-hidden list of what's actually been measured versus
+what's honestly still missing. Nothing here claims more than what was
+actually run and checked.
+
+As of this writing: **94 automated tests pass** (49 on the C++ side,
+checked under memory-safety tooling; 45 on the Python side), and the
+whole thing has been built and run inside a real Docker container.
+
+## Try it
 
 ```
-csrc/      C++/CUDA compute layer (everything below the pybind11 boundary)
-kiln_py/   Python orchestration layer (API, scheduler, runtime driver)
-tests/     cpp/ (GoogleTest), py/ (pytest), parity/ (oracle-diff suites)
-tools/     oracle.py (HF reference dumps), quantize_ref.py (Phase 9)
-docs/      adr/, walkthrough.md, defense.md, correctness.md, learning/
-```
-
-See `docs/walkthrough.md` for a literate tour, `docs/adr/` for design
-decisions (ADR-006 is the language boundary, ADR-007 the kernel strategy),
-`docs/defense.md` for interview-facing explanations, and `docs/learning/`
-for the derivations and notes behind each phase.
-
-## Build
-
-```
-pip install -e .              # builds csrc -> kiln_py/_C via scikit-build-core
-cmake -B build -G Ninja        # or build/test the C++ side directly
-cmake --build build
+pip install -e .                                          # builds the C++ side
+cmake -B build -G Ninja && cmake --build build             # or, to just run the C++ tests directly
 ctest --test-dir build --output-on-failure
+PYTHONPATH=. python3 -m pytest tests/py                     # the Python side
+
+bash demo.sh                                                # the full five-minute tour
 ```
+
+Then open `http://localhost:8420/` for the playground, or read
+`docs/writeups/` for three longer explanations of the most interesting
+parts (the shared-memory conversation cache, the "how do we know it's
+still right" testing philosophy, and what shrinking a model actually
+costs).
+
+## Where things live
+
+```
+csrc/            the C++/CUDA side — everything that does the actual math
+kiln_py/         the Python side — requests, scheduling, accounts, the web API
+tests/           cpp/ (GoogleTest) and py/ (pytest)
+tools/           the reference-model comparison script, a quantizer cross-check
+docs/            adr/ (why each big decision was made), learning/ (derivations,
+                 phase by phase), writeups/ (the longer explanations),
+                 walkthrough.md, defense.md, correctness.md, postmortems/
+deploy/          Dockerfile, docker-compose (engine + Prometheus + Grafana)
+demo.sh          the scripted end-to-end tour
+```
+
+The full 18-phase plan this project follows lives in
+[`../KILN PLAN.md`](../KILN%20PLAN.md).

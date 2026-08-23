@@ -107,3 +107,64 @@ deliverable: no real perplexity/KL table (needs a real checkpoint and
 WikiText-2), no real decode-speedup measurement, no real multi-GPU scaling
 efficiency. All of these are deferred to Kaggle T4 time, per ADR-009 --
 named explicitly here and in `BENCHMARKS.md`, not implied to be done.
+
+## Part III additions
+
+- `kiln_py/eval/` — exact-match task scoring, a perplexity calculator, a
+  bootstrap-confidence-interval regression gate (paired, not just an
+  average comparison), and canary-replay diffing. Tested against small,
+  hand-constructed inputs rather than the real (untrained) model, since
+  that's the more meaningful test available offline.
+- `csrc/executor/lora.{h,cpp}` and `Model::MergeLoraIntoLayer` — folds an
+  already-trained LoRA adapter into a served model's weights. Proven both
+  by a hand-computed matrix check and by confirming the merge changes a
+  real forward pass's output. Real LoRA *training*, the data pipeline, and
+  the multi-GPU scaling study are explicitly out of scope (no PyTorch
+  training setup or GPUs available) -- see docs/defense.md.
+- `demo.sh` -- the scripted five-minute demo, **actually run end to end in
+  this session**, not just written and assumed to work.
+- `docs/writeups/` -- three longer explanations (the paged allocator, the
+  parity-harness methodology, the quantization tradeoff study), drafted
+  from the phase learning notes.
+
+## Part IV additions
+
+- `kiln_py/control_plane/` -- API keys (SHA-256 hashed, never stored raw),
+  daily token quotas and per-second rate limits (both enforced *before* a
+  request runs), and usage metering, as its own FastAPI service per
+  constitution §6. Both of the plan's named Phase 16 tests pass:
+  tenant-isolation-under-hammering, and a leaked-key revocation drill.
+  In-memory store, not Postgres -- the enforcement logic is proven, the
+  persistence layer isn't built.
+- `kiln_py/api/playground.html` -- a self-contained static page (a
+  deliberate scope call instead of the plan's Next.js app; Node was
+  actually available -- see docs/learning/phase-17.md), live side-by-side
+  temperature comparison with real measured latency, manually verified
+  against a real running server.
+- `kiln_py/metrics/` and the `/metrics` endpoint -- real Prometheus
+  counters and a histogram, verified to actually increment on a real
+  request.
+- `deploy/` -- a Dockerfile and docker-compose stack (engine + Prometheus
+  + Grafana), **actually built and run** in this session on real Docker,
+  which caught two real bugs along the way (see docs/correctness.md): a
+  missing `-fPIC` flag that only breaks the build on Linux, and a missing
+  copy of installed console scripts that broke the container's entrypoint.
+  Both fixed and re-verified by rebuilding and re-running the container.
+- **What is deliberately, explicitly not done:** any real public
+  deployment, any real users, any real incident, any real retention
+  number. None of these are fabricated -- see docs/learning/phase-18.md
+  for why that boundary matters more here than anywhere else in this
+  project. `docs/postmortems/TEMPLATE.md` is a template with no incident
+  in it.
+
+## Final honest tally
+
+94 automated tests pass as of this session (49 C++, checked under
+AddressSanitizer/UndefinedBehaviorSanitizer; 45 Python, mypy clean), plus
+a real, manually-verified Docker deployment. Everything genuinely GPU-
+dependent (Phase 7's kernels, real quantization/speculative-decoding
+numbers, real multi-GPU scaling) is written to spec and deferred to
+Kaggle T4 time. Real LoRA training and a real public launch are deferred
+for reasons independent of GPU budget, named in their own phase notes.
+Nothing in this project claims a result that wasn't actually produced and
+checked in this session.

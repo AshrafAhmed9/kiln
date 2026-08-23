@@ -81,13 +81,13 @@ separate users; and a small web page to try all of it.
 
 **What doesn't work yet, and why, in one line each:** the GPU-only pieces
 (the hand-written fast kernels) are written but never compiled, because
-this was built on a machine with no NVIDIA GPU. Nothing has been checked
-against a real, trained model's answers, because running one needs an
-internet-heavy install this environment didn't have. And nobody has
-actually used this — there's no live website, no real users, no incident
-that ever happened — because that would take an actual public launch,
-which is a decision for later, not something to fake. Every one of these
-is written down in detail, not glossed over — see **Honest status**
+this was built on a machine with no NVIDIA GPU. One real Llama-family
+checkpoint has now passed a final-logit comparison (details below), but
+per-layer parity and full tokenizer conformance remain unfinished. And
+nobody has actually used this — there's no live website, no real users, no
+incident that ever happened — because that would take an actual public
+launch, which is a decision for later, not something to fake. Every one of
+these is written down in detail, not glossed over — see **Honest status**
 below.
 
 ## How it fits together
@@ -175,6 +175,14 @@ of real bugs this project found in itself (and how); `BENCHMARKS.md` has
 the itemized, nothing-hidden list of what's actually been measured versus
 what's honestly still missing. Nothing here claims more than what was
 actually run and checked.
+
+One CPU-only reference check now exists: with
+`HuggingFaceTB/SmolLM2-135M-Instruct`, the prompt `Kiln checks its own
+math.` produced matching top-1 next-token IDs between Hugging Face FP32 and
+Kiln. The measured final-logit difference was **7.44×10⁻⁵ max absolute** and
+**1.23×10⁻⁵ mean absolute**. This is one checkpoint and one prompt, not a
+complete parity proof. Run it after `pip install -e '.[oracle]'` with
+`PYTHONPATH=. python tools/hf_parity.py --model-dir PATH`.
 
 As of this writing: the checked-in suites include **51 C++ tests**
 (including memory-safety tooling) and the Python API/control-plane tests.

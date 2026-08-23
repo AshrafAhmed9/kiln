@@ -108,7 +108,15 @@ Model Model::LoadFromSafetensors(const ModelConfig& config,
   }
 
   load_tensor("model.norm.weight", model.final_norm);
-  load_tensor("lm_head.weight", model.lm_head);
+  if (file.HasTensor("lm_head.weight")) {
+    load_tensor("lm_head.weight", model.lm_head);
+  } else {
+    // Llama-family checkpoints often tie the output head to the embedding
+    // table, storing one copy under model.embed_tokens.weight. Reusing that
+    // already-converted vector preserves the checkpoint's intended weights
+    // without requiring a duplicate tensor to exist on disk.
+    model.lm_head = model.tok_embeddings;
+  }
 
   return model;
 }

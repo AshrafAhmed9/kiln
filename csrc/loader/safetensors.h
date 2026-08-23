@@ -38,6 +38,7 @@ class SafetensorsFile {
   SafetensorsFile& operator=(const SafetensorsFile&) = delete;
 
   const TensorView& Tensor(const std::string& name) const;
+  bool HasTensor(const std::string& name) const;
   const std::unordered_map<std::string, TensorView>& tensors() const {
     return tensors_;
   }

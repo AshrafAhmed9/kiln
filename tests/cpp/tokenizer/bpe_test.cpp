@@ -20,8 +20,9 @@ std::string WriteTestTokenizer() {
   // Merges: "a"+"b" -> "ab" (rank 0), "ab"+"c" -> "abc" (rank 1).
   std::string json = R"({
     "model": {
-      "vocab": {"a": 0, "b": 1, "c": 2, "ab": 3, "abc": 4},
-      "merges": ["a b", "ab c"]
+      "vocab": {"a": 0, "b": 1, "c": 2, "ab": 3, "abc": 4,
+                "Ġ": 5, "Ġa": 6},
+      "merges": ["a b", "ab c", "Ġ a"]
     }
   })";
   std::ofstream out(path);
@@ -62,6 +63,20 @@ TEST(BpeTokenizer, NoMergeAvailableLeavesSymbolsSeparate) {
   std::vector<int32_t> ids = tok.Encode("c");
   ASSERT_EQ(ids.size(), 1u);
   EXPECT_EQ(ids[0], 2);
+
+  std::remove(path.c_str());
+}
+
+TEST(BpeTokenizer, LeadingSpaceStaysWithTheFollowingWord) {
+  std::string path = WriteTestTokenizer();
+  BpeTokenizer tok = BpeTokenizer::Load(path);
+
+  // GPT-2's byte mapping spells a raw space as "Ġ". The leading space must
+  // stay in this pre-token rather than becoming its own chunk before BPE can
+  // apply the "Ġ" + "a" merge from a real tokenizer's vocabulary.
+  std::vector<int32_t> ids = tok.Encode(" a");
+  ASSERT_EQ(ids.size(), 1u);
+  EXPECT_EQ(ids[0], 6);
 
   std::remove(path.c_str());
 }

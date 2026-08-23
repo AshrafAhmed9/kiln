@@ -481,3 +481,29 @@ local process has neither the traffic nor the measurement history needed to
 support them. Streaming requests are not included in its completion/latency
 counters because those counters were not previously wired for the streaming
 path; the page names the scope rather than quietly implying otherwise.
+
+## Phase 22 — First real Hugging Face comparison
+
+**What:** the oracle tooling now has a reproducible CPU-only route using
+`HuggingFaceTB/SmolLM2-135M-Instruct`, a small Llama-family checkpoint. Kiln
+loads its BF16 safetensors weights, including tied input/output embeddings,
+then compares its final next-token logits with Hugging Face FP32. For the
+prompt `Kiln checks its own math.`, the measured maximum absolute difference
+was 7.44×10⁻⁵, mean absolute difference was 1.23×10⁻⁵, and both implementations
+chose the same top token. A 10,000-string, seeded tokenizer comparison also
+now runs against the checkpoint's real tokenizer JSON.
+
+**Why it works:** the checkpoint uses the same Llama tensor names and model
+dimensions the C++ executor expects. Some Llama checkpoints omit
+`lm_head.weight` because it is tied to the input embedding table; the loader
+now deliberately recognizes that format and uses the converted embeddings as
+the output head. The comparison sends the exact Hugging Face token IDs to both
+models, isolating forward-pass numerics from tokenizer disagreement.
+
+**What it cost:** this is evidence, not a completed parity program. It checks
+one prompt's final row rather than every layer or a broad prompt fixture. The
+tokenizer run matched 4,749 of 10,000 strings after a real leading-space bug
+was fixed, but still exposes the deliberately simplified Unicode,
+punctuation, and whitespace pre-tokenizer. Those mismatches prevent calling
+the tokenizer conformant, and a complete fix needs an equivalent Unicode-aware
+pre-tokenization implementation rather than a more flattering fixture.

@@ -36,6 +36,8 @@ TEST(Safetensors, RoundTripsOneTensor) {
   std::string path = WriteTestFile(values, "[2,2]");
 
   SafetensorsFile file = SafetensorsFile::Load(path);
+  EXPECT_TRUE(file.HasTensor("x"));
+  EXPECT_FALSE(file.HasTensor("missing"));
   const TensorView& view = file.Tensor("x");
 
   EXPECT_EQ(view.dtype, DType::kF32);

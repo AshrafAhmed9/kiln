@@ -16,6 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "mypy", "clang-format", "httpx"]
+oracle = ["transformers", "torch", "safetensors"]
 
 [tool.scikit-build]
 cmake.build-type = "Release"

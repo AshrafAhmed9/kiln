@@ -135,4 +135,8 @@ const TensorView& SafetensorsFile::Tensor(const std::string& name) const {
   return it->second;
 }
 
+bool SafetensorsFile::HasTensor(const std::string& name) const {
+  return tensors_.find(name) != tensors_.end();
+}
+
 }  // namespace kiln

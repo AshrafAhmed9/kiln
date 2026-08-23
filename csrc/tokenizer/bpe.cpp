@@ -65,6 +65,24 @@ std::vector<std::string> PreTokenize(const std::string& text) {
   while (i < text.size()) {
     unsigned char c = text[i];
 
+    // GPT-2-style tokenizers treat one leading space as part of the word it
+    // precedes (" hello" is a different token sequence from "hello"). It
+    // has to be handled before the general whitespace case below; otherwise
+    // that case consumes the space first and makes this distinction
+    // impossible. The original ordering accidentally did exactly that.
+    if (c == ' ' && i + 1 < text.size() &&
+        (IsAsciiLetter(text[i + 1]) ||
+         static_cast<unsigned char>(text[i + 1]) >= 0x80)) {
+      size_t start = i++;
+      while (i < text.size() &&
+             (IsAsciiLetter(text[i]) ||
+              static_cast<unsigned char>(text[i]) >= 0x80)) {
+        ++i;
+      }
+      chunks.push_back(text.substr(start, i - start));
+      continue;
+    }
+
     if (IsAsciiSpace(c)) {
       size_t start = i;
       while (i < text.size() && IsAsciiSpace(text[i])) ++i;
@@ -72,12 +90,7 @@ std::vector<std::string> PreTokenize(const std::string& text) {
       continue;
     }
 
-    // A leading space is folded into the following word, matching GPT-2's
-    // " ?\p{L}+" style alternatives -- this is why "cat" and " cat" tokenize
-    // differently, which is a real property of the reference tokenizer.
     size_t start = i;
-    if (c == ' ' && i + 1 < text.size()) ++i;
-
     if (i < text.size() &&
         (IsAsciiLetter(text[i]) || static_cast<unsigned char>(text[i]) >= 0x80)) {
       while (i < text.size() && (IsAsciiLetter(text[i]) ||

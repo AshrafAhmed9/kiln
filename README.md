@@ -14,6 +14,50 @@ with the option to shrink the model down for speed — the way a real,
 production LLM server works, minus the parts that need a rented GPU or a
 real audience to build honestly.
 
+## The delta table
+
+Every row below is a real, reproducible measurement from
+`bench/run_benchmarks.py` — run it yourself with `PYTHONPATH=.
+python3 bench/run_benchmarks.py`. There is no GPU in this environment, so
+this all runs on CPU against a small, **randomly-initialized (untrained)**
+model — real numbers, honest hardware, not the production claim. The
+metric used per row is whichever one that optimization actually changes;
+forcing every row into the same column would be less honest, not more
+rigorous.
+
+| Optimization | What it actually changes | Measured result |
+|---|---|---|
+| Naive (recompute every step) | decode throughput | **254.7 tok/s** |
+| + KV cache | decode throughput | **2,843 tok/s** (**11.2×**) |
+| + KV cache (representative path) | TTFT / TPOT, p50 / p99, n=20 trials | TTFT 2.14 / 2.47 ms · TPOT 0.28 / 0.31 ms |
+| + continuous batching | wall-clock time, mixed-length workload (6 requests) | **1.42×** faster than static batching |
+| + paged KV cache | max concurrent sequences at fixed memory | contiguous **4** → paged **21** → paged+shared-prefix **62** |
+| + INT8 quantization | memory footprint · reconstruction error | **3.76×** smaller · MSE **3.5×10⁻⁵** (CPU speed *not* faster — no INT8 kernel; see below) |
+| + speculative decoding | target-model calls per token | **1.0×** (no reduction) — both models are independently untrained, so the draft's guesses essentially never match the target's; see below |
+
+**Two rows that need explaining, not hiding:**
+
+- **INT8 shows no CPU speedup.** The memory reduction and the accuracy
+  cost are real, measured numbers. The *speed* win real INT8 quantization
+  provides comes from an INT8 GPU kernel — this project's Phase 7 kernels
+  are written but unverified (no GPU here), so there is genuinely nothing
+  to measure yet on the speed axis. Reporting a CPU number as if it
+  demonstrated the GPU win would be the fabrication this project
+  specifically refuses to do.
+- **Speculative decoding shows a 1.0× (zero) reduction here, and that's
+  the correct, honest result for this setup.** Its entire payoff depends
+  on the draft model's guesses actually landing — and two independently,
+  randomly-initialized models have essentially no reason to agree (about
+  a 1-in-1000 chance per token, at this toy vocabulary size). The
+  mechanism is proven correct elsewhere (see the speculative-decoding
+  section below: exact, token-for-token, against greedy decoding) — this
+  row is a measurement of *this session's* draft/target pairing, not a
+  claim that speculative decoding doesn't work.
+
+See `BENCHMARKS.md` for the full per-phase history and `BENCHMARK.md` for
+the roofline / arithmetic-intensity analysis of why decode and prefill
+behave so differently in the first place.
+
 ## What actually works right now
 
 Kiln can load a model, turn text into the numbers it understands and

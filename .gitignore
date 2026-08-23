@@ -1,4 +1,5 @@
 build/
+build-*/
 *.pt
 __pycache__/
 .venv/
@@ -6,3 +7,4 @@ compile_commands.json
 kiln_py/_C*.so
 *.egg-info/
 .mypy_cache/
+.pytest_cache/

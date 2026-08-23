@@ -13,9 +13,9 @@ class Arena {
  public:
   explicit Arena(size_t capacity_bytes);
 
-  // Returns a pointer to `size` bytes, or nullptr if the arena is full.
-  // Debug builds assert instead of returning nullptr, so an out-of-arena
-  // allocation is caught at the call site, not silently ignored.
+  // Returns a pointer to `size` bytes, or a null pointer if there isn't
+  // enough room left. The caller has to check for that null pointer --
+  // this function never silently writes past the end of its block.
   void* Allocate(size_t size);
 
   size_t used() const { return offset_; }

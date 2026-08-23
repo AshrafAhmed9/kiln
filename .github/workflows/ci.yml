@@ -9,7 +9,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang-format clang-tidy cmake ninja-build python3-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format clang-tidy cmake ninja-build \
+            python3-dev nlohmann-json3-dev
 
       - name: clang-format check
         run: |
@@ -32,11 +35,16 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install extension + dev deps
+      - name: Install system deps for building the C++ extension
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build nlohmann-json3-dev
+
+      - name: Install package + dev deps (builds the pybind11 extension)
         run: pip install -e ".[dev]"
 
       - name: mypy
         run: mypy kiln_py
 
-      - name: pytest (boundary sanity: kiln_py._C.ping() == "pong")
+      - name: pytest (scheduler, API, and the pybind11 boundary sanity check)
         run: pytest tests/py

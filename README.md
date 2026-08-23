@@ -6,8 +6,18 @@ actually built: **Python orchestrates** (API, scheduler, control plane),
 step against a HuggingFace reference by a numerical parity harness. Full
 plan: [`../KILN PLAN.md`](../KILN%20PLAN.md).
 
-Status: **Phase 0 in progress** (foundations — repo, CI, memory arena,
-pybind11 boundary, parity oracle).
+Status: **Part I (Phases 0–6) complete** — a CPU-only, correct
+continuous-batching LLM server: safetensors loader, byte-level BPE
+tokenizer, a full Llama-architecture forward pass (GEMM/RMSNorm/RoPE/GQA
+attention/SwiGLU), a contiguous KV cache with seeded sampling, padded
+static batching, an Orca-style continuous-batching scheduler, and an
+OpenAI-compatible API with SSE streaming. 42/42 tests pass (29 C++ under
+ASan/UBSan, 13 Python). Honestly incomplete: no real trained checkpoint has
+been run through this code yet (no HF install in this offline environment —
+see ADR-009), so there are no real tokens/s numbers and no verified
+numerical parity against the HuggingFace reference yet — see
+`docs/walkthrough.md`'s "Honest state" section and `BENCHMARKS.md`. Part II
+(GPU) is next.
 
 ## Layout
 

@@ -14,13 +14,27 @@ if(KILN_SANITIZE)
   add_link_options(-fsanitize=address,undefined)
 endif()
 
+find_package(nlohmann_json 3.11 REQUIRED)
+
 # The compute layer (csrc/) -- constitution §6: everything below the
 # pybind11 boundary. Kept as its own static lib so tests link it directly,
 # without going through Python.
 add_library(kiln_cpp STATIC
   csrc/memory/arena.cpp
+  csrc/loader/safetensors.cpp
+  csrc/tokenizer/bpe.cpp
+  csrc/executor/gemm.cpp
+  csrc/executor/rmsnorm.cpp
+  csrc/executor/rope.cpp
+  csrc/executor/attention.cpp
+  csrc/executor/swiglu.cpp
+  csrc/executor/model.cpp
+  csrc/kv/kv_cache.cpp
+  csrc/executor/sampler.cpp
+  csrc/executor/batch.cpp
 )
 target_include_directories(kiln_cpp PUBLIC csrc)
+target_link_libraries(kiln_cpp PUBLIC nlohmann_json::nlohmann_json)
 
 if(KILN_BUILD_PYBIND)
   find_package(Python3 COMPONENTS Interpreter Development REQUIRED)

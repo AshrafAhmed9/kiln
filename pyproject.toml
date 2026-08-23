@@ -11,10 +11,11 @@ dependencies = [
   "fastapi",
   "uvicorn",
   "prometheus_client",
+  "numpy",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "mypy", "clang-format"]
+dev = ["pytest", "mypy", "clang-format", "httpx"]
 
 [tool.scikit-build]
 cmake.build-type = "Release"

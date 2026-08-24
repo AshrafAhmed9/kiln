@@ -85,8 +85,8 @@ now compile and pass small CPU-vs-GPU correctness tests on a Kaggle P100,
 and Triton RoPE matches a CPU reference there. They are not integrated into
 model execution or performance-tuned. One real Llama-family
 checkpoint has now passed a final-logit comparison (details below), but
-per-layer parity remains unfinished; the named 10,000-string tokenizer
-fixture is now conformant. And
+per-layer parity is available through a debug-only capture path, while the
+named 10,000-string tokenizer fixture is conformant. And
 nobody has actually used this — there's no live website, no real users, no
 incident that ever happened — because that would take an actual public
 launch, which is a decision for later, not something to fake. Every one of

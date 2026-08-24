@@ -161,9 +161,10 @@ specific reason it wasn't done — read the relevant one before starting.
   actually-related models instead of two independently random ones, real
   multi-GPU tensor-parallel scaling).
 - **Broader internal numerical parity.** A downloaded SmolLM2 checkpoint
-  now passes final-logit comparison across ten diverse prompts, but Kiln
-  does not yet expose per-layer activations for direct comparison with
-  `tools/oracle.py`.
+  passes final-logit comparison across ten diverse prompts. Kiln now exposes
+  debug-only post-layer hidden states; the first 30-layer comparison is
+  recorded in `BENCHMARKS.md`. Broader model/checkpoint coverage remains an
+  evaluation choice, not a missing mechanism.
 - **Tokenizer conformance** is complete for the named seeded 10,000-string
   SmolLM2 fixture (10,000 exact matches); other tokenizer configurations
   remain outside that evidence.
@@ -171,12 +172,10 @@ specific reason it wasn't done — read the relevant one before starting.
   small PEFT training/export/merge route is now present, but it needs a
   licensed task dataset, held-out evaluation, and multiple GPUs for the
   DDP→FSDP study. PyTorch remains training tooling only.
-- **Wiring the scheduler into the API for genuine concurrent multi-
-  request continuous batching.** The API currently drives the Phase 3
-  single-sequence generation loop directly; `kiln_py/scheduler/` exists
-  and is tested in isolation (against a mock executor) but isn't
-  connected to real HTTP request handling yet. This is real, valuable,
-  buildable-without-a-GPU work.
+- **Scheduler/API integration is complete.** Normal and SSE completion
+  requests share the real scheduler worker; SSE disconnects cancel their
+  request. Prefill remains individually executed because the executor has
+  no ragged-prefill interface or paged-cache integration.
 - **A real public launch (Phase 18).** Not a coding task — a decision
   Ashraf makes. If/when he says to actually deploy this somewhere real,
   that's when `deploy/Dockerfile` and `deploy/docker-compose.yml` (both

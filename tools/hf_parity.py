@@ -37,41 +37,49 @@ def config_from_hf(config_path: Path) -> object:
     return kiln_config
 
 
-def compare(model_dir: Path, prompt: str) -> dict[str, float | bool | int]:
+def compare_prompts(model_dir: Path, prompts: list[str]) -> list[dict[str, float | bool | int | str]]:
     tokenizer = AutoTokenizer.from_pretrained(model_dir)
-    input_ids = tokenizer.encode(prompt, add_special_tokens=False)
-    if not input_ids:
-        raise ValueError("prompt must produce at least one token")
-
     reference = AutoModelForCausalLM.from_pretrained(
         model_dir, torch_dtype=torch.float32
     ).eval()
-    with torch.no_grad():
-        reference_logits = reference(
-            torch.tensor([input_ids], dtype=torch.long)
-        ).logits[0, -1].float().numpy()
-
     kiln_model = _C.Model.load_from_safetensors(
         config_from_hf(model_dir / "config.json"),
         str(model_dir / "model.safetensors"),
     )
-    kiln_logits = kiln_model.forward(
-        np.asarray(input_ids, dtype=np.int32), 1, len(input_ids), None, 0, None
-    )[-1]
-    difference = np.abs(kiln_logits - reference_logits)
+    results = []
+    for prompt in prompts:
+        input_ids = tokenizer.encode(prompt, add_special_tokens=False)
+        if not input_ids:
+            raise ValueError("prompt must produce at least one token")
+        with torch.no_grad():
+            reference_logits = reference(
+                torch.tensor([input_ids], dtype=torch.long)
+            ).logits[0, -1].float().numpy()
+        kiln_logits = kiln_model.forward(
+            np.asarray(input_ids, dtype=np.int32), 1, len(input_ids), None, 0, None
+        )[-1]
+        difference = np.abs(kiln_logits - reference_logits)
+        results.append({
+            "prompt": prompt,
+            "prompt_tokens": len(input_ids),
+            "vocab_size": len(kiln_logits),
+            "max_abs_diff": float(difference.max()),
+            "mean_abs_diff": float(difference.mean()),
+            "top1_matches": bool(int(kiln_logits.argmax()) == int(reference_logits.argmax())),
+        })
+    return results
 
-    return {
-        "prompt_tokens": len(input_ids),
-        "vocab_size": len(kiln_logits),
-        "max_abs_diff": float(difference.max()),
-        "mean_abs_diff": float(difference.mean()),
-        "top1_matches": bool(int(kiln_logits.argmax()) == int(reference_logits.argmax())),
-    }
+
+def compare(model_dir: Path, prompt: str) -> dict[str, float | bool | int | str]:
+    return compare_prompts(model_dir, [prompt])[0]
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-dir", type=Path, required=True)
     parser.add_argument("--prompt", default="Kiln checks its own math.")
+    parser.add_argument("--prompts-file", type=Path)
     arguments = parser.parse_args()
-    print(json.dumps(compare(arguments.model_dir, arguments.prompt), indent=2))
+    prompts = ([line for line in arguments.prompts_file.read_text().splitlines() if line]
+               if arguments.prompts_file else [arguments.prompt])
+    print(json.dumps(compare_prompts(arguments.model_dir, prompts), indent=2))

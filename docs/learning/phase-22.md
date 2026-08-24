@@ -23,6 +23,12 @@ often changes the best token. It is not a parity proof: one final vector can
 miss a layer-local error that later happens to cancel, and one prompt cannot
 cover sequence lengths, characters, or model states broadly.
 
+The reproducible fixture now contains ten prompts spanning ordinary prose,
+numbers, punctuation, Unicode, and a longer 16-token sequence. All ten match
+the Hugging Face top token; their largest final-logit difference is
+7.44×10⁻⁵. `tools/hf_parity.py --prompts-file tools/fixtures/hf_parity_prompts.txt`
+loads the reference once and emits one result per prompt.
+
 ## The tokenizer result was useful precisely because it failed
 
 The first 10,000-string real fixture found a leading-space bug: the generic

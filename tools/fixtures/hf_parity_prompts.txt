@@ -1,0 +1,10 @@
+Kiln checks its own math.
+The quickest way to find a bug is
+In 2026, a small model can still
+Unicode text: café 東京 مرحبا 🙂
+Numbers 123, 4567, and punctuation?!
+Once upon a time, a cache remembered
+Explain why attention needs a causal mask.
+The answer is not always obvious, but
+Spaces matter in byte-level tokenization.
+This deliberately longer prompt checks positions across several tokens and keeps the reference comparison honest.

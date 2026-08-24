@@ -33,6 +33,7 @@ class CudaModel {
   void ForwardCached(const int32_t* tokens, int64_t seq_len,
                      int64_t start_pos, float* out_logits) const;
   void ResetCache() const;
+  const ModelConfig& config() const;
 
  private:
   struct Impl;

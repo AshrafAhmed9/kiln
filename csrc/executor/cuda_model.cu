@@ -238,6 +238,8 @@ void CudaModel::ForwardCached(const int32_t* host_tokens, int64_t seq_len,
 
 void CudaModel::ResetCache() const { impl_->cache_length = 0; }
 
+const ModelConfig& CudaModel::config() const { return impl_->config; }
+
 void CudaModel::ForwardImpl(const int32_t* host_tokens, int64_t seq_len,
                             int64_t start_pos, float* out_logits,
                             bool use_cache) const {

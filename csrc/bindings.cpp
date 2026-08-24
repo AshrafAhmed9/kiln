@@ -9,6 +9,9 @@
 #include <random>
 
 #include "executor/model.h"
+#ifdef KILN_BUILD_CUDA
+#include "executor/cuda_model.h"
+#endif
 #include "executor/sampler.h"
 #include "kv/kv_cache.h"
 #include "quant/quantize.h"
@@ -111,6 +114,27 @@ void ModelMergeLoraIntoLayer(Model& model, int64_t layer_idx,
                             a.shape[0], scale);
 }
 
+#ifdef KILN_BUILD_CUDA
+py::array_t<float> CudaModelForward(const CudaModel& model,
+                                    ContiguousInt32Array tokens,
+                                    int64_t start_pos, bool use_cache) {
+  auto input = tokens.request();
+  if (input.ndim != 1) throw std::invalid_argument("tokens must be 1D");
+  const int64_t seq_len = input.shape[0];
+  // The CUDA executor validates token IDs and cache position on the C++ side;
+  // this wrapper only owns safe NumPy pointer and output-shape handling.
+  py::array_t<float> out({seq_len, model.config().vocab_size});
+  if (use_cache) {
+    model.ForwardCached(static_cast<const int32_t*>(input.ptr), seq_len,
+                        start_pos, static_cast<float*>(out.request().ptr));
+  } else {
+    model.Forward(static_cast<const int32_t*>(input.ptr), seq_len, start_pos,
+                  static_cast<float*>(out.request().ptr));
+  }
+  return out;
+}
+#endif
+
 // A byte-level tokenizer's decoded output is raw bytes, not necessarily
 // valid UTF-8 text on its own -- especially one word (token) at a time, since
 // a single character in a real alphabet can be spread across more than one
@@ -186,6 +210,25 @@ PYBIND11_MODULE(_C, m) {
            py::arg("layer_idx"), py::arg("which"), py::arg("lora_a"),
            py::arg("lora_b"), py::arg("scale"))
       .def_property_readonly("config", &kiln::Model::config);
+
+#ifdef KILN_BUILD_CUDA
+  py::class_<kiln::CudaModel>(m, "CudaModel")
+      .def(py::init<const kiln::Model&>())
+      .def("forward", [](const kiln::CudaModel& model,
+                          kiln::ContiguousInt32Array tokens,
+                          int64_t start_pos) {
+        return kiln::CudaModelForward(model, std::move(tokens), start_pos,
+                                      /*use_cache=*/false);
+      }, py::arg("tokens"), py::arg("start_pos") = 0)
+      .def("forward_cached", [](const kiln::CudaModel& model,
+                                 kiln::ContiguousInt32Array tokens,
+                                 int64_t start_pos) {
+        return kiln::CudaModelForward(model, std::move(tokens), start_pos,
+                                      /*use_cache=*/true);
+      }, py::arg("tokens"), py::arg("start_pos"))
+      .def("reset_cache", &kiln::CudaModel::ResetCache)
+      .def_property_readonly("config", &kiln::CudaModel::config);
+#endif
 
   py::class_<kiln::KVCache>(m, "KVCache")
       .def(py::init<int64_t, int64_t, int64_t, int64_t>(), py::arg("n_layers"),

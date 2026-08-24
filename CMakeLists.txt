@@ -106,6 +106,12 @@ if(KILN_BUILD_PYBIND)
   # The one file allowed to know about both sides of the §6 boundary.
   pybind11_add_module(_C csrc/bindings.cpp)
   target_link_libraries(_C PRIVATE kiln_cpp)
+  if(KILN_BUILD_CUDA)
+    # Keep the public extension CPU-buildable while making the CUDA executor
+    # available in a CUDA build through the same audited pybind boundary.
+    target_link_libraries(_C PRIVATE kiln_cuda)
+    target_compile_definitions(_C PRIVATE KILN_BUILD_CUDA=1)
+  endif()
   set_target_properties(_C PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/kiln_py
   )

@@ -7,11 +7,15 @@ Python dispatch, allocation, and setup from both implementations.
 from __future__ import annotations
 
 import argparse
+import pathlib
 import statistics
+import sys
 
 import torch
 
-from csrc.kernels.triton.rope import apply_rope_triton
+# Running `python tools/…` makes Python put `tools/`, rather than the
+# repository root, on its import path. The CUDA notebook invokes it that way.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,6 +36,8 @@ def main() -> None:
     args = parse_args()
     if not torch.cuda.is_available():
         raise RuntimeError("this benchmark requires a CUDA-capable PyTorch install")
+    from csrc.kernels.triton.rope import apply_rope_triton
+
     x = torch.zeros(args.tokens * args.heads * args.head_dim,
                     device="cuda", dtype=torch.float32)
     positions = torch.arange(args.tokens, device="cuda", dtype=torch.int64)

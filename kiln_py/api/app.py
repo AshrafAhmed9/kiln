@@ -132,20 +132,9 @@ def _stream_completion(request: CompletionRequest, sampler_config):
     appears to type itself out live, instead of showing up all at once
     after a long pause.
     """
-    prompt_ids = _tokenizer.encode(request.prompt)
-    cache = _C.KVCache(_model.config.n_layers, _model.config.max_seq_len,
-                        _model.config.n_kv_heads, _model.config.head_dim)
-
-    import numpy as np
-
-    all_tokens = list(prompt_ids)
-    tokens_array = np.array(prompt_ids, dtype=np.int32)
-    logits = _model.forward(tokens_array, 1, len(prompt_ids), None, 0, cache)
-
-    for step in range(request.max_tokens):
-        next_token = _C.sample(logits[-1], sampler_config, all_tokens,
-                                request.seed + step)
-        all_tokens.append(next_token)
+    for next_token in _completion_batches.stream(
+        request.prompt, request.max_tokens, sampler_config, request.seed
+    ):
         # Same reasoning as in kiln_py/runtime/generate.py: a byte-level
         # tokenizer can hand back a byte that isn't valid text on its own,
         # especially from this untrained demo model -- swap it for the
@@ -158,10 +147,6 @@ def _stream_completion(request: CompletionRequest, sampler_config):
             "choices": [{"text": piece, "index": 0, "finish_reason": None}],
         }
         yield f"data: {json.dumps(chunk)}\n\n"
-
-        one_token = np.array([next_token], dtype=np.int32)
-        position = len(all_tokens) - 1
-        logits = _model.forward(one_token, 1, 1, None, position, cache)
 
     yield "data: [DONE]\n\n"
 

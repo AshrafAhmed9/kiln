@@ -24,6 +24,7 @@ class RequestState(Enum):
     RUNNING = auto()   # currently getting new words generated for it, one per scheduler step
     DONE = auto()       # finished -- either it hit its word limit or produced an end token
     REJECTED = auto()   # could never have fit even alone -- rejected immediately, not queued forever
+    CANCELLED = auto()  # client disconnected before the requested completion finished
 
 
 @dataclass
@@ -122,6 +123,16 @@ class Scheduler:
 
         self.waiting.append(request)
         return request
+
+    def cancel(self, request_id: int) -> Request | None:
+        """Removes a disconnected request before another decode step uses it."""
+        for queue in (self.waiting, self.running):
+            for index, request in enumerate(queue):
+                if request.request_id == request_id:
+                    queue.pop(index)
+                    request.state = RequestState.CANCELLED
+                    return request
+        return None
 
     def _admit_waiting_requests(self) -> None:
         """Lets waiting requests in, one at a time, for as long as there's

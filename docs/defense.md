@@ -529,8 +529,9 @@ calls, so it checks the real numerical contract rather than just that the API
 returns two responses.
 
 **What it cost:** this is intentionally the minimum real integration, not a
-claim of a finished vLLM-style engine. Prompts still prefill one at a time
-because the executor has no ragged prefill interface, and SSE streaming keeps
-its direct generation loop until its per-token delivery and cancellation
-lifecycle is tested against the scheduler. The contiguous per-sequence cache
-also means this path has not yet inherited Phase 8's paged prefix sharing.
+claim of a finished vLLM-style engine. Both normal and SSE completions now use
+the scheduler worker; the streaming iterator receives one token at a time and
+cancels its scheduler request if the client disconnects. Prompts still prefill
+one at a time because the executor has no ragged prefill interface. The
+contiguous per-sequence cache also means this path has not yet inherited Phase
+8's paged prefix sharing.

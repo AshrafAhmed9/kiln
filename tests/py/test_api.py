@@ -109,3 +109,18 @@ def test_streaming_completion_sends_multiple_chunks_then_done():
     assert lines[-1] == "data: [DONE]"
     # One data line per generated word, plus the final [DONE] line.
     assert len(lines) == 3 + 1
+
+
+def test_concurrent_streaming_completions_share_the_scheduler_service():
+    def stream(prompt: str) -> list[str]:
+        with client.stream("POST", "/v1/completions", json={
+            "prompt": prompt, "max_tokens": 3, "stream": True, "seed": 9,
+        }) as response:
+            assert response.status_code == 200
+            return [line for line in response.iter_lines() if line]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(stream, ["first stream", "second stream"]))
+
+    assert all(lines[-1] == "data: [DONE]" for lines in responses)
+    assert all(len(lines) == 4 for lines in responses)

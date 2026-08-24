@@ -33,8 +33,9 @@ it's accurate and current as of this handoff.
 3. **This machine (and likely yours) has no NVIDIA GPU.** Raw CUDA was
    nevertheless compiled and checked remotely on a Kaggle Tesla P100
    (sm_60, NVCC 12.8): four CPU-vs-GPU tests and the full 57-test CTest run
-   passed at revision `dc792e1`. Triton remains unrun; no kernel is profiled
-   or integrated into model execution. Do not inflate that narrow result
+   passed at revision `dc792e1`. Triton RoPE was also run successfully after
+   pinning a Pascal-compatible PyTorch wheel. No kernel is integrated into
+   model execution. Do not inflate these correctness results
    into a GPU performance claim. See the backlog below.
 4. **Comments are plain, human, jargon-free language** — someone should
    be able to answer an interview question about a piece of code just by
@@ -147,8 +148,8 @@ specific reason it wasn't done — read the relevant one before starting.
 
 - **Remaining GPU work (Phase 7, and the GPU half of Phases 9/10/12):**
   raw CUDA has now compiled and passed small reference tests on a Kaggle
-  P100, but `csrc/kernels/triton/rope.py` still needs a real run. Profile
-  the raw kernels with Nsight Compute and get real tokens/s and
+  P100, and Triton RoPE has run against a CPU reference. Profile the raw
+  kernels with Nsight Compute and get real tokens/s and
   bandwidth-utilization numbers for `BENCHMARK.md`'s roofline section.
   The zero-budget plan's answer remains Kaggle GPU notebooks (ADR-009);
   these measurements unlock real numbers for
@@ -156,21 +157,17 @@ specific reason it wasn't done — read the relevant one before starting.
   speed/accuracy tradeoffs, real speculative-decoding speedup with two
   actually-related models instead of two independently random ones, real
   multi-GPU tensor-parallel scaling).
-- **Real numerical parity against the HuggingFace reference.**
-  `tools/oracle.py` is written and ready; it's never been run against a
-  real downloaded checkpoint (needs a real `transformers` install this
-  sandboxed session didn't have). This is arguably higher priority than
-  the GPU work above — it's the project's core differentiator (the
-  parity harness) and doesn't need a GPU at all, just internet access and
-  disk space for a small (~0.5–1.5B) model.
-- **Tokenizer conformance testing** against the real HF tokenizer on a
-  large (10k+) string fixture set — same blocker as above (needs a real
-  `transformers`/`tokenizers` install).
-- **Real LoRA fine-tuning** (Phase 14): the data pipeline, the actual
-  training loop, the multi-GPU DDP→FSDP scaling study. Needs a PyTorch
-  training setup and GPUs, explicitly out of scope for this project's
-  serving engine (constitution §2 — PyTorch is permitted for *training
-  tooling* only, never in the served engine).
+- **Broader internal numerical parity.** A downloaded SmolLM2 checkpoint
+  now passes final-logit comparison across ten diverse prompts, but Kiln
+  does not yet expose per-layer activations for direct comparison with
+  `tools/oracle.py`.
+- **Tokenizer conformance** is complete for the named seeded 10,000-string
+  SmolLM2 fixture (10,000 exact matches); other tokenizer configurations
+  remain outside that evidence.
+- **LoRA quality/evaluation and multi-GPU scaling** (Phase 14): a real
+  small PEFT training/export/merge route is now present, but it needs a
+  licensed task dataset, held-out evaluation, and multiple GPUs for the
+  DDP→FSDP study. PyTorch remains training tooling only.
 - **Wiring the scheduler into the API for genuine concurrent multi-
   request continuous batching.** The API currently drives the Phase 3
   single-sequence generation loop directly; `kiln_py/scheduler/` exists

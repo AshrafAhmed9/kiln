@@ -82,10 +82,11 @@ separate users; and a small web page to try all of it.
 
 **What doesn't work yet, and why, in one line each:** the raw CUDA kernels
 now compile and pass small CPU-vs-GPU correctness tests on a Kaggle P100,
-but they are neither profiled nor integrated into model execution; Triton
-has not yet been compiled or run. One real Llama-family
+and Triton RoPE matches a CPU reference there. They are not integrated into
+model execution or performance-tuned. One real Llama-family
 checkpoint has now passed a final-logit comparison (details below), but
-per-layer parity and full tokenizer conformance remain unfinished. And
+per-layer parity remains unfinished; the named 10,000-string tokenizer
+fixture is now conformant. And
 nobody has actually used this — there's no live website, no real users, no
 incident that ever happened — because that would take an actual public
 launch, which is a decision for later, not something to fake. Every one of

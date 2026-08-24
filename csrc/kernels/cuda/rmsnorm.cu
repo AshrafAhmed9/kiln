@@ -4,6 +4,7 @@
 // The math is identical to csrc/executor/rmsnorm.cpp; only the way work is
 // split across threads is different.
 #include <cuda_runtime.h>
+#include <cstdint>
 
 namespace kiln {
 

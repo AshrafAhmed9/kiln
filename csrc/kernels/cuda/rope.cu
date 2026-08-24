@@ -5,6 +5,7 @@
 // CUDA, and this is the evidence for why that split is reasonable rather
 // than just asserted.
 #include <cuda_runtime.h>
+#include <cstdint>
 
 namespace kiln {
 

@@ -6,6 +6,7 @@
 // spread across threads instead of a single-threaded loop. One GPU block
 // handles one (query token, attention head) pair.
 #include <cuda_runtime.h>
+#include <cstdint>
 #include <float.h>
 
 namespace kiln {

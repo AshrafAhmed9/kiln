@@ -8,6 +8,7 @@
 // "how do many threads agree on the single largest value across a whole
 // row, without racing each other?" -- is already fully present here.
 #include <cuda_runtime.h>
+#include <cstdint>
 #include <float.h>
 
 namespace kiln {

@@ -7,6 +7,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(KILN_SANITIZE "Build with ASan+UBSan" OFF)
 option(KILN_BUILD_PYBIND "Build the kiln._C pybind11 extension" ON)
+option(KILN_BUILD_CUDA "Build the CUDA kernel validation suite" OFF)
+set(KILN_CUDA_ARCHITECTURES "" CACHE STRING
+    "CUDA compute capability, for example 75 for a T4 or 60 for a P100")
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 if(KILN_SANITIZE)
@@ -49,6 +52,28 @@ target_link_libraries(kiln_cpp PUBLIC nlohmann_json::nlohmann_json)
 # same way) and only failed when actually building the Docker image on
 # Linux for the first time -- a real, caught-late bug, not a hypothetical.
 set_target_properties(kiln_cpp PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+if(KILN_BUILD_CUDA)
+  if(NOT KILN_CUDA_ARCHITECTURES)
+    message(FATAL_ERROR
+      "Set KILN_CUDA_ARCHITECTURES to the assigned GPU capability (for example 75)")
+  endif()
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+  add_library(kiln_cuda STATIC
+    csrc/kernels/cuda/attention.cu
+    csrc/kernels/cuda/rmsnorm.cu
+    csrc/kernels/cuda/rope.cu
+    csrc/kernels/cuda/sampler.cu
+  )
+  target_include_directories(kiln_cuda PUBLIC csrc)
+  target_link_libraries(kiln_cuda PUBLIC CUDA::cudart)
+  set_target_properties(kiln_cuda PROPERTIES
+    CUDA_STANDARD 17
+    CUDA_STANDARD_REQUIRED ON
+    CUDA_ARCHITECTURES ${KILN_CUDA_ARCHITECTURES}
+  )
+endif()
 
 if(KILN_BUILD_PYBIND)
   find_package(Python3 COMPONENTS Interpreter Development REQUIRED)

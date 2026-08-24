@@ -28,3 +28,14 @@ target_link_libraries(kiln_cpp_tests PRIVATE kiln_cpp gtest_main)
 
 include(GoogleTest)
 gtest_discover_tests(kiln_cpp_tests)
+
+if(KILN_BUILD_CUDA)
+  add_executable(kiln_cuda_tests cuda_kernels_test.cu)
+  target_link_libraries(kiln_cuda_tests PRIVATE kiln_cpp kiln_cuda gtest_main)
+  set_target_properties(kiln_cuda_tests PROPERTIES
+    CUDA_STANDARD 17
+    CUDA_STANDARD_REQUIRED ON
+    CUDA_ARCHITECTURES ${KILN_CUDA_ARCHITECTURES}
+  )
+  gtest_discover_tests(kiln_cuda_tests)
+endif()

@@ -19,7 +19,7 @@ void GemmBTCuda(const float* a, const float* b_transposed, float* c,
   // cuBLAS is column-major. Reinterpreting our row-major C=A*B^T as its
   // transpose gives C^T=B*A^T, so the operands swap and dimensions reverse.
   cublasStatus_t status = cublasSgemm(
-      handle, CUBLAS_OP_N, CUBLAS_OP_N, static_cast<int>(n),
+      handle, CUBLAS_OP_T, CUBLAS_OP_N, static_cast<int>(n),
       static_cast<int>(m), static_cast<int>(k), &alpha, b_transposed,
       static_cast<int>(k), a, static_cast<int>(k), &beta, c,
       static_cast<int>(n));

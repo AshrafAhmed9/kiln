@@ -28,6 +28,22 @@ with `ERR_NVGPUCTRPERM`. That means no profiler metric was collected; enabling
 that permission or using a different GPU environment is an external
 requirement, not a source-code failure.
 
+## Device-resident model prefill (Kaggle version 14)
+
+Revision `80bf15e` added `CudaModel`: it copies one model's weights to device
+memory once, keeps temporary activations on device, reuses one cuBLAS handle,
+and composes the existing CUDA RMSNorm, RoPE, attention, residual/SwiGLU, and
+GEMM operations into a complete uncached forward pass. On Kaggle's T4 pair,
+the full CTest suite passed 60/60, including `CudaModel.FullPrefillMatchesCpuReference`.
+That test compares every logit for a two-layer random model against
+`Model::Forward` at `1e-4` tolerance. It is end-to-end correctness evidence
+for the narrow prefill contract, not a throughput claim or a real-checkpoint
+benchmark.
+
+The next committed extension adds an executor-owned contiguous GPU KV cache
+and a conditional pybind interface. Those changes were not part of version 14
+and must not be treated as GPU-validated until their queued remote run passes.
+
 ## T4 kernel comparison (Kaggle version 9)
 
 A later Kaggle run received two Tesla T4s (sm_75, CUDA 12.8). All 57 CTest

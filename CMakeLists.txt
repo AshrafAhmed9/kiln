@@ -74,6 +74,18 @@ if(KILN_BUILD_CUDA)
     CUDA_STANDARD_REQUIRED ON
     CUDA_ARCHITECTURES ${KILN_CUDA_ARCHITECTURES}
   )
+
+  # This is deliberately a separate executable instead of a Python binding:
+  # it times the same raw CUDA RoPE entry point used by the GPU correctness
+  # test, without adding a second language boundary to the measurement.
+  add_executable(kiln_rope_cuda_benchmark bench/rope_cuda_benchmark.cu)
+  target_link_libraries(kiln_rope_cuda_benchmark PRIVATE kiln_cuda CUDA::cudart)
+  target_include_directories(kiln_rope_cuda_benchmark PRIVATE csrc)
+  set_target_properties(kiln_rope_cuda_benchmark PROPERTIES
+    CUDA_STANDARD 17
+    CUDA_STANDARD_REQUIRED ON
+    CUDA_ARCHITECTURES ${KILN_CUDA_ARCHITECTURES}
+  )
 endif()
 
 if(KILN_BUILD_PYBIND)

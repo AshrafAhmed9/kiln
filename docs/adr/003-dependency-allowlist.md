@@ -4,8 +4,8 @@
 
 **Allowed:** cuBLAS (Part II GEMM only), a minimal HTTP library
 (`cpp-httplib`), `nlohmann/json`, HuggingFace `transformers`/`tokenizers`
-(test/tooling only), GoogleTest + Google Benchmark, the Prometheus C++
-client.
+(test/tooling only), ICU (Unicode pre-token boundary selection only),
+GoogleTest + Google Benchmark, the Prometheus C++ client.
 
 **Everything else is hand-built:** safetensors loader, BPE tokenizer, CPU
 GEMM, every attention variant, the paged KV allocator, the continuous-

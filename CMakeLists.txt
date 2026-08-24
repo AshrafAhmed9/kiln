@@ -18,6 +18,7 @@ if(KILN_SANITIZE)
 endif()
 
 find_package(nlohmann_json 3.11 REQUIRED)
+find_package(ICU REQUIRED COMPONENTS i18n uc)
 
 # The compute layer (csrc/) -- constitution §6: everything below the
 # pybind11 boundary. Kept as its own static lib so tests link it directly,
@@ -42,7 +43,7 @@ add_library(kiln_cpp STATIC
   csrc/executor/lora.cpp
 )
 target_include_directories(kiln_cpp PUBLIC csrc)
-target_link_libraries(kiln_cpp PUBLIC nlohmann_json::nlohmann_json)
+target_link_libraries(kiln_cpp PUBLIC nlohmann_json::nlohmann_json ICU::i18n ICU::uc)
 
 # This static library gets linked into the _C shared module (below) as
 # well as into the plain test binary. A static library built without

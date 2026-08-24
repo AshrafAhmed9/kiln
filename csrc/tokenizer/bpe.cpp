@@ -7,6 +7,8 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <stdexcept>
+#include <unicode/regex.h>
+#include <unicode/unistr.h>
 
 namespace kiln {
 
@@ -41,68 +43,38 @@ std::vector<std::string> Utf8Codepoints(const std::string& s) {
   return out;
 }
 
-bool IsAsciiLetter(unsigned char c) {
-  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-}
-bool IsAsciiDigit(unsigned char c) { return c >= '0' && c <= '9'; }
-bool IsAsciiSpace(unsigned char c) {
-  return c == ' ' || c == '\t' || c == '\n' || c == '\r';
-}
-
-// GPT-2-style pre-tokenization: split text into chunks along
-// word/number/punctuation/whitespace boundaries so BPE merges never cross a
-// chunk boundary. Simplification stated honestly (docs/learning/phase-01.md
-// and docs/defense.md): this classifies by ASCII category only. Any byte
-// >= 0x80 (non-ASCII UTF-8 lead/continuation byte) is treated as part of a
-// "word" run rather than looked up by real Unicode letter/number category,
-// since std::regex has no \p{L}/\p{N} support to match HF's actual pattern.
-// Correct for ASCII text; full-conformance testing against the 10k-string
-// HF fixture is deferred to when that fixture can be generated (needs a
-// local/Kaggle HF install -- see docs/learning/phase-01.md).
+// GPT-2/ByteLevel pre-tokenization uses Unicode categories. ICU gives the
+// C++ tokenizer the same \p{L}, \p{N}, and whitespace semantics that the
+// Hugging Face tokenizer uses, instead of treating every non-ASCII byte as a
+// letter and splitting punctuation/number runs differently.
 std::vector<std::string> PreTokenize(const std::string& text) {
+  static const icu::RegexPattern* pattern = []() {
+    UErrorCode status = U_ZERO_ERROR;
+    const auto expression = icu::UnicodeString::fromUTF8(
+        "(?:'s|'t|'re|'ve|'m|'ll|'d)| ?\\p{L}+| ?\\p{N}+| ?[^\\s\\p{L}\\p{N}]+|\\s+(?!\\S)|\\s+");
+    const icu::RegexPattern* compiled =
+        icu::RegexPattern::compile(expression, 0, status);
+    if (U_FAILURE(status)) {
+      throw std::runtime_error("bpe: failed to compile Unicode pre-tokenizer");
+    }
+    return compiled;
+  }();
+
+  UErrorCode status = U_ZERO_ERROR;
+  const icu::UnicodeString input = icu::UnicodeString::fromUTF8(text);
+  std::unique_ptr<icu::RegexMatcher> matcher(pattern->matcher(input, status));
+  if (U_FAILURE(status)) {
+    throw std::runtime_error("bpe: failed to create Unicode pre-tokenizer");
+  }
   std::vector<std::string> chunks;
-  size_t i = 0;
-  while (i < text.size()) {
-    unsigned char c = text[i];
-
-    // GPT-2-style tokenizers treat one leading space as part of the word it
-    // precedes (" hello" is a different token sequence from "hello"). It
-    // has to be handled before the general whitespace case below; otherwise
-    // that case consumes the space first and makes this distinction
-    // impossible. The original ordering accidentally did exactly that.
-    if (c == ' ' && i + 1 < text.size() &&
-        (IsAsciiLetter(text[i + 1]) ||
-         static_cast<unsigned char>(text[i + 1]) >= 0x80)) {
-      size_t start = i++;
-      while (i < text.size() &&
-             (IsAsciiLetter(text[i]) ||
-              static_cast<unsigned char>(text[i]) >= 0x80)) {
-        ++i;
-      }
-      chunks.push_back(text.substr(start, i - start));
-      continue;
-    }
-
-    if (IsAsciiSpace(c)) {
-      size_t start = i;
-      while (i < text.size() && IsAsciiSpace(text[i])) ++i;
-      chunks.push_back(text.substr(start, i - start));
-      continue;
-    }
-
-    size_t start = i;
-    if (i < text.size() &&
-        (IsAsciiLetter(text[i]) || static_cast<unsigned char>(text[i]) >= 0x80)) {
-      while (i < text.size() && (IsAsciiLetter(text[i]) ||
-                                  static_cast<unsigned char>(text[i]) >= 0x80)) {
-        ++i;
-      }
-    } else if (i < text.size() && IsAsciiDigit(text[i])) {
-      while (i < text.size() && IsAsciiDigit(text[i])) ++i;
-    } else if (i < text.size()) {
-      ++i;  // a single punctuation/symbol character
-    }
-    chunks.push_back(text.substr(start, i - start));
+  while (matcher->find(status)) {
+    icu::UnicodeString match = matcher->group(status);
+    std::string utf8;
+    match.toUTF8String(utf8);
+    chunks.push_back(std::move(utf8));
+  }
+  if (U_FAILURE(status)) {
+    throw std::runtime_error("bpe: Unicode pre-tokenizer failed");
   }
   return chunks;
 }

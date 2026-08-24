@@ -506,11 +506,12 @@ models, isolating forward-pass numerics from tokenizer disagreement.
 
 **What it cost:** this is evidence, not a completed parity program. It checks
 one prompt's final row rather than every layer or a broad prompt fixture. The
-tokenizer run matched 4,749 of 10,000 strings after a real leading-space bug
-was fixed, but still exposes the deliberately simplified Unicode,
-punctuation, and whitespace pre-tokenizer. Those mismatches prevent calling
-the tokenizer conformant, and a complete fix needs an equivalent Unicode-aware
-pre-tokenization implementation rather than a more flattering fixture.
+tokenizer gap is now closed for the named fixture: ICU supplies the Unicode
+letter, number, punctuation, and whitespace categories that the prior ASCII
+splitter could not express, and the seeded 10,000-string run matches 10,000
+of 10,000 cases. That adds a native dependency (ADR-014), but does not prove
+conformance for every possible tokenizer configuration or replace broad model
+numerical parity.
 
 ## Phase 23 — Cached decode batching reaches the API
 

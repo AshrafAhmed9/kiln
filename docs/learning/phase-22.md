@@ -28,6 +28,7 @@ cover sequence lengths, characters, or model states broadly.
 The first 10,000-string real fixture found a leading-space bug: the generic
 whitespace branch ran before the GPT-2-style "space plus word" branch, making
 that branch unreachable. Fixing the order increased exact matches from 4,439
-to 4,749. The remaining 5,251 mismatches are not hidden: the C++ pre-tokenizer
-still lacks Hugging Face's full Unicode-letter, Unicode-number, punctuation,
-and whitespace rules. A smaller-looking fixture would not solve that problem.
+to 4,749. The complete fix uses ICU's Unicode regex engine for the same
+letter, number, punctuation, and whitespace boundaries as ByteLevel
+pre-tokenization. The fixture now matches **10,000/10,000** strings. The BPE
+implementation remains Kiln's; ICU only chooses the boundaries (ADR-014).

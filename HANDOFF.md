@@ -154,9 +154,9 @@ specific reason it wasn't done — read the relevant one before starting.
   and bandwidth-utilization numbers for `BENCHMARK.md`'s roofline section.
   Kaggle denied the attempted Nsight Compute run access to GPU performance
   counters (`ERR_NVGPUCTRPERM`), so this specifically needs an environment
-  that grants counter access. A device-resident CUDA prefill path has passed
-  complete-logit CPU parity on a T4; cached GPU decode and the Python binding
-  are implemented but still awaiting remote validation. Quantization and
+  that grants counter access. Device-resident CUDA prefill and cached decode
+  have passed complete-logit CPU parity on a T4; the Python binding is
+  implemented but still awaiting remote validation. Quantization and
   speculative-decoding measurements, and tensor-parallel model parity/
   scaling are still engineering work, not settings toggles.
 - **Broader internal numerical parity.** A downloaded SmolLM2 checkpoint

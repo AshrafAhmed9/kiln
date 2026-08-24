@@ -101,8 +101,8 @@ drives the single-sequence generation loop directly).
 **Part II:** this machine has no NVIDIA GPU, but the raw CUDA kernels have
 been compiled and run remotely on Kaggle P100 and T4 GPUs, matching small CPU
 references in four tests. Triton RoPE is also verified and has one narrow T4
-comparison; a device-resident CUDA prefill path also passed full-logit CPU
-parity on a T4, but it remains unprofiled and is not the API's default
+comparison; device-resident CUDA prefill and cached decode also passed
+full-logit CPU parity on a T4, but they remain unprofiled and are not the API's default
 executor. Everything else in Part II (paged KV cache,
 quantization, speculative decoding, the parity-harness self-test, and
 tensor-parallel sharding math) *is* real, CPU-testable, and tested for

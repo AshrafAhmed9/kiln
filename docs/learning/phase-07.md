@@ -40,9 +40,12 @@ That test compares every logit for a two-layer random model against
 for the narrow prefill contract, not a throughput claim or a real-checkpoint
 benchmark.
 
-The next committed extension adds an executor-owned contiguous GPU KV cache
-and a conditional pybind interface. Those changes were not part of version 14
-and must not be treated as GPU-validated until their queued remote run passes.
+Kaggle version 16 then ran revision `3c02523` and passed 61/61 CTest checks,
+including `CudaModel.CachedDecodeMatchesCpuReference`: prefill a GPU cache,
+decode one more token, and compare all logits with the CPU cache path at
+`1e-4`. The conditional pybind build completed in that run, but its standalone
+probe had an import-path bug after CTest; that probe remains pending until the
+corrected version 17 completes.
 
 ## T4 kernel comparison (Kaggle version 9)
 

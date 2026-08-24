@@ -178,8 +178,9 @@ passed four small CPU-vs-GPU tests; the complete CTest suite passed 57/57.
 This is a correctness/build check, not a speed claim. The later T4 run
 verified Triton RoPE and a device-resident CUDA prefill path: revision
 `80bf15e` passed 60/60 CTest checks, including full CPU-vs-GPU logits for a
-small model. The CUDA cache, pybind interface, profiler metrics, and
-end-to-end throughput remain unverified or unfinished as named below.
+small model. Revision `3c02523` later passed 61/61, adding cached GPU decode
+parity. The pybind probe, profiler metrics, and end-to-end throughput remain
+unverified or unfinished as named below.
 
 **What:** hand-written raw CUDA kernels for the three "headline" kernels
 (attention, RMSNorm, greedy argmax sampling), each deliberately mirroring

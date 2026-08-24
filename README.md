@@ -83,8 +83,8 @@ separate users; and a small web page to try all of it.
 **What doesn't work yet, and why, in one line each:** the raw CUDA kernels
 now compile and pass small CPU-vs-GPU correctness tests on Kaggle P100 and
 T4 GPUs; the T4 run also gives a narrow raw-CUDA-vs-Triton RoPE benchmark.
-A device-resident CUDA prefill path has also matched the CPU model's complete
-logits on a T4. GPU cached decode, the Python CUDA binding, profiler tuning,
+A device-resident CUDA prefill and cached-decode path have also matched the
+CPU model's complete logits on a T4. The Python CUDA binding, profiler tuning,
 and multi-GPU model execution remain pending validation (Kaggle blocks
 performance counters). One real Llama-family
 checkpoint has now passed a final-logit comparison (details below), but

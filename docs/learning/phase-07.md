@@ -28,6 +28,27 @@ with `ERR_NVGPUCTRPERM`. That means no profiler metric was collected; enabling
 that permission or using a different GPU environment is an external
 requirement, not a source-code failure.
 
+## T4 kernel comparison (Kaggle version 9)
+
+A later Kaggle run received two Tesla T4s (sm_75, CUDA 12.8). All 57 CTest
+checks passed, and Triton RoPE again matched the small CPU reference. This
+finally exercised ADR-007's one direct raw-CUDA-versus-Triton comparison:
+the same FP32 RoPE rotation was event-timed on one T4 at the
+SmolLM2-135M-shaped workload of 512 tokens, 9 heads, and head dimension 64.
+Each implementation used 100 warm-up launches, then 21 samples of 1,000
+launches; allocation, Python setup, and CPU timing were excluded.
+
+| implementation | median time / launch | effective bandwidth |
+| --- | ---: | ---: |
+| raw CUDA | 0.011774 ms | 200.38 GB/s |
+| Triton | 0.020402 ms | 115.64 GB/s |
+
+For this one unfused kernel and shape, the straightforward raw CUDA version
+was faster. That is a measured comparison, not evidence that raw CUDA is
+always faster, nor an end-to-end model/serving number. Nsight still failed
+with the same Kaggle counter-permission error, so this result explains no
+hardware-counter-level cause.
+
 ## Why a GPU changes how attention has to be written, even though the math is identical
 
 On a CPU, one core computes one number at a time, in whatever order is

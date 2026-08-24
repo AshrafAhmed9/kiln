@@ -81,9 +81,10 @@ smaller model as a scout; API keys and usage limits for multiple
 separate users; and a small web page to try all of it.
 
 **What doesn't work yet, and why, in one line each:** the raw CUDA kernels
-now compile and pass small CPU-vs-GPU correctness tests on a Kaggle P100,
-and Triton RoPE matches a CPU reference there. They are not integrated into
-model execution or performance-tuned. One real Llama-family
+now compile and pass small CPU-vs-GPU correctness tests on Kaggle P100 and
+T4 GPUs; the T4 run also gives a narrow raw-CUDA-vs-Triton RoPE benchmark.
+They are not integrated into model execution or profiler-tuned (Kaggle
+blocks performance counters). One real Llama-family
 checkpoint has now passed a final-logit comparison (details below), but
 per-layer parity is available through a debug-only capture path, while the
 named 10,000-string tokenizer fixture is conformant. And

@@ -31,12 +31,12 @@ it's accurate and current as of this handoff.
    purpose. If Ashraf asks for a public launch, that is a real decision
    for him to make outside of a coding session, not something to simulate.
 3. **This machine (and likely yours) has no NVIDIA GPU.** Raw CUDA was
-   nevertheless compiled and checked remotely on a Kaggle Tesla P100
-   (sm_60, NVCC 12.8): four CPU-vs-GPU tests and the full 57-test CTest run
-   passed at revision `dc792e1`. Triton RoPE was also run successfully after
-   pinning a Pascal-compatible PyTorch wheel. No kernel is integrated into
-   model execution. Do not inflate these correctness results
-   into a GPU performance claim. See the backlog below.
+   nevertheless checked remotely on Kaggle P100 and T4 hardware (NVCC 12.8):
+   four CPU-vs-GPU tests and the full 57-test CTest run passed. Triton RoPE
+   also matches its CPU reference, and one T4 run contains a narrow, event-
+   timed raw-CUDA-vs-Triton RoPE comparison. No kernel is integrated into
+   model execution. Do not inflate these kernel results into an end-to-end
+   GPU serving performance claim. See the backlog below.
 4. **Comments are plain, human, jargon-free language** — someone should
    be able to answer an interview question about a piece of code just by
    reading its comment. This is a standing instruction from Ashraf; don't
@@ -86,8 +86,9 @@ that before adding anything new.
   independent Python reference (real, tested); speculative decoding
   **proven token-for-token exact** against greedy decoding (the strongest
   correctness result in the repo); a parity-harness self-test; CPU-
-  simulated tensor-parallel sharding math. Phase 7's CUDA/Triton kernels
-  are the one part of Part II that's unverified (no GPU).
+  simulated tensor-parallel sharding math plus a real two-rank NCCL probe.
+  Phase 7's CUDA/Triton kernel correctness and one RoPE comparison are
+  verified on Kaggle, but GPU model execution remains unbuilt.
 - **Part III (13–15):** eval infrastructure (exact-match, perplexity,
   bootstrap-CI regression gating, canary replay); LoRA adapter merging
   (real training is out of scope — no PyTorch training setup); a demo
@@ -147,19 +148,15 @@ its own `docs/defense.md` / `docs/learning/phase-NN.md` entry with the
 specific reason it wasn't done — read the relevant one before starting.
 
 - **Remaining GPU work (Phase 7, and the GPU half of Phases 9/10/12):**
-  raw CUDA has now compiled and passed small reference tests on a Kaggle
-  P100, and Triton RoPE has run against a CPU reference. Profile the raw
-  kernels with Nsight Compute and get real tokens/s and
-  bandwidth-utilization numbers for `BENCHMARK.md`'s roofline section.
+  raw CUDA and Triton now have correctness evidence on Kaggle P100/T4, one
+  T4 raw-CUDA-vs-Triton RoPE comparison, and a two-rank NCCL environment
+  probe. Profile the raw kernels with Nsight Compute and get real tokens/s
+  and bandwidth-utilization numbers for `BENCHMARK.md`'s roofline section.
   Kaggle denied the attempted Nsight Compute run access to GPU performance
   counters (`ERR_NVGPUCTRPERM`), so this specifically needs an environment
-  that grants counter access.
-  The zero-budget plan's answer remains Kaggle GPU notebooks (ADR-009);
-  these measurements unlock real numbers for
-  several other rows in `BENCHMARKS.md` too (real quantization
-  speed/accuracy tradeoffs, real speculative-decoding speedup with two
-  actually-related models instead of two independently random ones, real
-  multi-GPU tensor-parallel scaling).
+  that grants counter access. Actual GPU model execution, quantization and
+  speculative-decoding measurements, and tensor-parallel model parity/
+  scaling are still engineering work, not settings toggles.
 - **Broader internal numerical parity.** A downloaded SmolLM2 checkpoint
   passes final-logit comparison across ten diverse prompts. Kiln now exposes
   debug-only post-layer hidden states; the first 30-layer comparison is

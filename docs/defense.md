@@ -335,11 +335,11 @@ has a partial answer, so the partial answers have to be added together.
 **What it cost, stated plainly:** this proves the sharding *algorithm* is
 correct -- which numbers get split where, and how they combine back into
 the right answer -- using ordinary local addition to stand in for a real
-network all-reduce. It does not, and can't, prove anything about real
-multi-GPU behavior (NCCL communication, actual scaling efficiency, real
-communication overhead), since no multi-GPU hardware was available in this
-session. That real measurement is genuinely deferred to when GPU time
-(Kaggle, per ADR-009) is available.
+network all-reduce. A later Kaggle T4 × 2 run did pass a real two-rank NCCL
+all-reduce probe, so the environment is no longer hypothetical. But Kiln's
+model tensors and matmuls are still CPU-side: no tensor-parallel model
+execution, parity, scaling efficiency, or communication-overhead number is
+claimed. Those remain the real Phase 12 implementation work.
 
 ## Phase 13 — Evaluation infrastructure
 

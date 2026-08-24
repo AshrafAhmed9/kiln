@@ -31,7 +31,7 @@ every single matrix multiply -- communication between GPUs is slow
 compared to the math itself, so minimizing how often it happens is the
 entire point of choosing this particular pairing.
 
-## Why this can be proven correct on a CPU, with no real GPUs involved
+## What the CPU proof establishes, and what the T4 probe adds
 
 The actual hard part of real tensor parallelism -- coordinating real GPUs
 over a real network connection (NCCL) -- can't be tested without real
@@ -44,3 +44,10 @@ What isn't proven this way is that real communication between real GPUs
 actually behaves the way this project's simulated "add these pieces
 together" stand-in assumes -- that's real, deferred, GPU-dependent work,
 named honestly rather than implied to be covered by these CPU-only tests.
+
+Kaggle later assigned a T4 × 2 session. `tools/validate_nccl.py` launched two
+processes, placed one integer on each GPU, and used NCCL all-reduce to obtain
+their expected sum. The run passed. That proves this specific environment can
+form a two-rank NCCL process group and exchange a collective. It does not turn
+the CPU model executor into a tensor-parallel executor, and it provides no
+model parity, speedup, or communication-overhead result yet.

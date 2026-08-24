@@ -48,3 +48,12 @@ them into a served model's weights. It does **not** implement:
   to actually promote).
 
 These are named here as real, deferred work, not implied to be finished.
+
+## Reproducible training route
+
+`tools/train_lora.py` now provides the training-tooling half: it trains a
+standard PEFT `q_proj` LoRA adapter and writes a `kiln-export.json` manifest
+whose A/B orientation and scale match Kiln's `wq` merge contract. A 20-step
+SmolLM2 run over the tiny included fixture produced a 1.1 MB safetensors
+adapter. That proves the training/export route, not model quality: the four
+authored records are intentionally too small for any usefulness claim.

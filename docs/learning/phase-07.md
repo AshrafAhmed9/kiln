@@ -11,9 +11,16 @@ match their CPU references on small inputs on that hardware.
 
 It does **not** prove they are fast, robust over production shapes, or used
 by the model executor. No Nsight profile or throughput measurement exists,
-and the Triton RoPE implementation remains uncompiled and unrun. The
-P100's older sm_60 architecture also means the result should not be
+and the Triton RoPE implementation had not yet been exercised at that point.
+The P100's older sm_60 architecture also means the result should not be
 generalized to newer T4/A10/A100 hardware without rerunning it there.
+
+The same Kaggle P100 later ran the Triton RoPE check after pinning a
+CUDA-12.1 PyTorch wheel that still includes Pascal kernels. It matched the
+CPU reference on three positions and two heads. Kaggle's default current
+PyTorch wheel did not support this P100, so that compatibility pin is part
+of the reproducible notebook setup rather than a claim that all PyTorch
+versions support sm_60.
 
 ## Why a GPU changes how attention has to be written, even though the math is identical
 

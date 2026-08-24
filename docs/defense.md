@@ -375,16 +375,12 @@ time means there's no separate "adapter-aware" code path in the forward
 pass to build and re-verify; the already-tested executor just sees a
 slightly different weight matrix.
 
-**What it cost, stated as plainly as possible:** this phase does **not**
-include actually training a LoRA adapter, a real data pipeline, or the
-multi-GPU scaling study the plan's Phase 14 is centered on -- none of
-those are achievable without a real PyTorch training setup and real
-GPUs, which this session doesn't have. What's built and tested is
-narrower and named precisely: given trained adapter matrices (however
-they were produced), merge them in correctly. The test proves this two
-ways -- a hand-computed matrix check, and confirmation that the merge
-changes a real model's actual output through the real, unmodified forward
-pass, not just at the matrix level in isolation.
+**What it cost, stated as plainly as possible:** `tools/train_lora.py` now
+trains and exports a standard PEFT `q_proj` adapter, and the C++ merge is
+available through the narrow Python binding for training tooling. A 20-step
+SmolLM2 run on four authored fixture records produced an adapter; this proves
+the pipeline, not quality or usefulness. A licensed task dataset, proper
+held-out evaluation, and multi-GPU DDP/FSDP scaling remain separate work.
 
 ## Phase 16 — Multi-tenancy and the control plane
 

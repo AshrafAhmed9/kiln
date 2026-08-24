@@ -151,6 +151,9 @@ specific reason it wasn't done — read the relevant one before starting.
   P100, and Triton RoPE has run against a CPU reference. Profile the raw
   kernels with Nsight Compute and get real tokens/s and
   bandwidth-utilization numbers for `BENCHMARK.md`'s roofline section.
+  Kaggle denied the attempted Nsight Compute run access to GPU performance
+  counters (`ERR_NVGPUCTRPERM`), so this specifically needs an environment
+  that grants counter access.
   The zero-budget plan's answer remains Kaggle GPU notebooks (ADR-009);
   these measurements unlock real numbers for
   several other rows in `BENCHMARKS.md` too (real quantization

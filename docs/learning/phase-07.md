@@ -22,6 +22,12 @@ PyTorch wheel did not support this P100, so that compatibility pin is part
 of the reproducible notebook setup rather than a claim that all PyTorch
 versions support sm_60.
 
+Nsight Compute was invoked on the raw attention test in the same notebook.
+The test itself passed, but Kaggle denied access to GPU performance counters
+with `ERR_NVGPUCTRPERM`. That means no profiler metric was collected; enabling
+that permission or using a different GPU environment is an external
+requirement, not a source-code failure.
+
 ## Why a GPU changes how attention has to be written, even though the math is identical
 
 On a CPU, one core computes one number at a time, in whatever order is

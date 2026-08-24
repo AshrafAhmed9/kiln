@@ -21,17 +21,19 @@ def generate(model, tokenizer, prompt: str, max_new_tokens: int,
     prompt_ids = tokenizer.encode(prompt)
     config = model.config
 
-    # The cache remembers everything the model has "read" so far, so each
-    # new word only costs one more step of work instead of rereading the
-    # whole conversation from scratch every time.
-    cache = _C.KVCache(config.n_layers, config.max_seq_len, config.n_kv_heads,
-                        config.head_dim)
-
     all_tokens = list(prompt_ids)
-
-    # First step: read the whole prompt at once (this is called "prefill").
     tokens_array = np.array(prompt_ids, dtype=np.int32)
-    logits = model.forward(tokens_array, 1, len(prompt_ids), None, 0, cache)
+    uses_cuda_cache = hasattr(model, "forward_cached")
+    if uses_cuda_cache:
+        # CudaModel owns device-resident K/V buffers. Keeping that ownership
+        # on the C++ side avoids copying cache rows through Python each token.
+        logits = model.forward_cached(tokens_array, 0)
+    else:
+        # The CPU model's cache is an explicit C++ object because the CPU
+        # binding supports multiple independent sequences.
+        cache = _C.KVCache(config.n_layers, config.max_seq_len,
+                           config.n_kv_heads, config.head_dim)
+        logits = model.forward(tokens_array, 1, len(prompt_ids), None, 0, cache)
 
     for step in range(max_new_tokens):
         last_word_scores = logits[-1]
@@ -44,7 +46,10 @@ def generate(model, tokenizer, prompt: str, max_new_tokens: int,
         # a cached loop is so much cheaper than starting over every time.
         one_token = np.array([next_token], dtype=np.int32)
         position = len(all_tokens) - 1
-        logits = model.forward(one_token, 1, 1, None, position, cache)
+        if uses_cuda_cache:
+            logits = model.forward_cached(one_token, position)
+        else:
+            logits = model.forward(one_token, 1, 1, None, position, cache)
 
     new_tokens = all_tokens[len(prompt_ids):]
     raw_bytes = tokenizer.decode(new_tokens)

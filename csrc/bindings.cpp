@@ -79,6 +79,21 @@ py::array_t<float> ModelForwardDecodeBatch(const Model& model,
   return out;
 }
 
+void ModelMergeLoraIntoLayer(Model& model, int64_t layer_idx,
+                             const std::string& which,
+                             ContiguousFloatArray lora_a,
+                             ContiguousFloatArray lora_b, float scale) {
+  auto a = lora_a.request();
+  auto b = lora_b.request();
+  if (a.ndim != 2 || b.ndim != 2 || a.shape[0] != b.shape[1]) {
+    throw std::invalid_argument("LoRA arrays must be A[rank, in] and B[out, rank]");
+  }
+  model.MergeLoraIntoLayer(layer_idx, which,
+                            static_cast<const float*>(a.ptr),
+                            static_cast<const float*>(b.ptr),
+                            a.shape[0], scale);
+}
+
 // A byte-level tokenizer's decoded output is raw bytes, not necessarily
 // valid UTF-8 text on its own -- especially one word (token) at a time, since
 // a single character in a real alphabet can be spread across more than one
@@ -148,6 +163,9 @@ PYBIND11_MODULE(_C, m) {
            py::arg("cache") = nullptr)
       .def("forward_decode_batch", &kiln::ModelForwardDecodeBatch,
            py::arg("tokens"), py::arg("positions"), py::arg("caches"))
+      .def("merge_lora_into_layer", &kiln::ModelMergeLoraIntoLayer,
+           py::arg("layer_idx"), py::arg("which"), py::arg("lora_a"),
+           py::arg("lora_b"), py::arg("scale"))
       .def_property_readonly("config", &kiln::Model::config);
 
   py::class_<kiln::KVCache>(m, "KVCache")

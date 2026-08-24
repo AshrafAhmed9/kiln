@@ -218,5 +218,30 @@ TEST(CudaModel, FullPrefillMatchesCpuReference) {
   }
 }
 
+TEST(CudaModel, CachedDecodeMatchesCpuReference) {
+  Model model = Model::LoadRandom(TinyCudaModelConfig(), /*seed=*/37);
+  const std::vector<int32_t> prompt = {1, 2, 3};
+  const int32_t next_token = 4;
+  KVCache cpu_cache(model.config().n_layers, model.config().max_seq_len,
+                    model.config().n_kv_heads, model.config().head_dim);
+  std::vector<float> cpu_prompt(prompt.size() * model.config().vocab_size);
+  std::vector<float> expected(model.config().vocab_size);
+  model.Forward(prompt.data(), /*batch_size=*/1, prompt.size(), nullptr,
+                /*start_pos=*/0, &cpu_cache, cpu_prompt.data());
+  model.Forward(&next_token, /*batch_size=*/1, /*seq_len=*/1, nullptr,
+                /*start_pos=*/prompt.size(), &cpu_cache, expected.data());
+
+  CudaModel cuda_model(model);
+  std::vector<float> gpu_prompt(cpu_prompt.size());
+  std::vector<float> actual(expected.size());
+  cuda_model.ForwardCached(prompt.data(), prompt.size(), /*start_pos=*/0,
+                           gpu_prompt.data());
+  cuda_model.ForwardCached(&next_token, /*seq_len=*/1,
+                           /*start_pos=*/prompt.size(), actual.data());
+  for (size_t i = 0; i < actual.size(); ++i) {
+    EXPECT_NEAR(actual[i], expected[i], 1e-4f);
+  }
+}
+
 }  // namespace
 }  // namespace kiln

@@ -77,6 +77,13 @@ class DeviceBuffer {
     CheckCuda(cudaMemcpy(host, data_, count * sizeof(T), cudaMemcpyDeviceToHost),
               "copy from device");
   }
+  void CopyFromDevice(const T* source, size_t count, size_t destination_offset) {
+    if (destination_offset > count_ || count > count_ - destination_offset) {
+      throw std::invalid_argument("device copy exceeds buffer capacity");
+    }
+    CheckCuda(cudaMemcpy(data_ + destination_offset, source, count * sizeof(T),
+                         cudaMemcpyDeviceToDevice), "copy within device");
+  }
 
  private:
   T* data_ = nullptr;
@@ -144,6 +151,12 @@ struct CudaModel::Impl {
     }
   };
 
+  struct CacheLayer {
+    explicit CacheLayer(size_t count) : k(count), v(count) {}
+    DeviceBuffer<float> k;
+    DeviceBuffer<float> v;
+  };
+
   explicit Impl(const Model& model)
       : config(model.config_), embeddings(model.tok_embeddings.size()),
         final_norm(model.final_norm.size()), lm_head(model.lm_head.size()),
@@ -169,6 +182,12 @@ struct CudaModel::Impl {
     lm_head.CopyFromHost(model.lm_head.data(), model.lm_head.size());
     layers.reserve(model.layers.size());
     for (const LayerWeights& layer : model.layers) layers.emplace_back(layer);
+    cache_layers.reserve(model.layers.size());
+    const size_t cache_size = static_cast<size_t>(config.max_seq_len) *
+                              config.n_kv_heads * config.head_dim;
+    for (int64_t i = 0; i < config.n_layers; ++i) {
+      cache_layers.emplace_back(cache_size);
+    }
     CheckCuBlas(cublasCreate(&handle), "cublasCreate");
   }
 
@@ -180,6 +199,8 @@ struct CudaModel::Impl {
   DeviceBuffer<float> final_norm;
   DeviceBuffer<float> lm_head;
   std::vector<Layer> layers;
+  std::vector<CacheLayer> cache_layers;
+  int64_t cache_length = 0;
   DeviceBuffer<int32_t> tokens;
   DeviceBuffer<int64_t> positions;
   DeviceBuffer<float> x;
@@ -203,8 +224,28 @@ CudaModel& CudaModel::operator=(CudaModel&&) noexcept = default;
 
 void CudaModel::Forward(const int32_t* host_tokens, int64_t seq_len,
                         int64_t start_pos, float* out_logits) const {
+  ForwardImpl(host_tokens, seq_len, start_pos, out_logits, /*use_cache=*/false);
+}
+
+void CudaModel::ForwardCached(const int32_t* host_tokens, int64_t seq_len,
+                              int64_t start_pos, float* out_logits) const {
+  if (start_pos != impl_->cache_length) {
+    throw std::invalid_argument(
+        "CudaModel::ForwardCached start position must equal cache length");
+  }
+  ForwardImpl(host_tokens, seq_len, start_pos, out_logits, /*use_cache=*/true);
+}
+
+void CudaModel::ResetCache() const { impl_->cache_length = 0; }
+
+void CudaModel::ForwardImpl(const int32_t* host_tokens, int64_t seq_len,
+                            int64_t start_pos, float* out_logits,
+                            bool use_cache) const {
   if (seq_len <= 0 || seq_len > impl_->config.max_seq_len) {
     throw std::invalid_argument("CudaModel::Forward sequence length is out of range");
+  }
+  if (use_cache && seq_len > impl_->config.max_seq_len - impl_->cache_length) {
+    throw std::invalid_argument("CudaModel::ForwardCached KV cache is full");
   }
   for (int64_t i = 0; i < seq_len; ++i) {
     if (host_tokens[i] < 0 || host_tokens[i] >= impl_->config.vocab_size) {
@@ -236,8 +277,21 @@ void CudaModel::Forward(const int32_t* host_tokens, int64_t seq_len,
     ApplyRopeCuda(impl_->k.data(), impl_->positions.data(), seq_len,
                   impl_->config.n_kv_heads, impl_->config.head_dim,
                   impl_->config.rope_theta);
-    AttentionCuda(impl_->q.data(), impl_->k.data(), impl_->v.data(),
-                  impl_->attn_out.data(), seq_len, seq_len,
+    const float* k_for_attention = impl_->k.data();
+    const float* v_for_attention = impl_->v.data();
+    int64_t kv_len = seq_len;
+    if (use_cache) {
+      const size_t offset = static_cast<size_t>(impl_->cache_length * kv_dim);
+      const size_t count = static_cast<size_t>(seq_len * kv_dim);
+      const size_t layer_index = static_cast<size_t>(&layer - impl_->layers.data());
+      impl_->cache_layers[layer_index].k.CopyFromDevice(impl_->k.data(), count, offset);
+      impl_->cache_layers[layer_index].v.CopyFromDevice(impl_->v.data(), count, offset);
+      k_for_attention = impl_->cache_layers[layer_index].k.data();
+      v_for_attention = impl_->cache_layers[layer_index].v.data();
+      kv_len = impl_->cache_length + seq_len;
+    }
+    AttentionCuda(impl_->q.data(), k_for_attention, v_for_attention,
+                  impl_->attn_out.data(), seq_len, kv_len,
                   impl_->config.n_heads, impl_->config.n_kv_heads,
                   impl_->config.head_dim, start_pos, -1);
     GemmBTWithHandle(impl_->handle, impl_->attn_out.data(), layer.wo.data(),
@@ -265,6 +319,7 @@ void CudaModel::Forward(const int32_t* host_tokens, int64_t seq_len,
   CheckCuda(cudaMemcpy(out_logits, impl_->logits.data(),
                        static_cast<size_t>(seq_len * impl_->config.vocab_size) * sizeof(float),
                        cudaMemcpyDeviceToHost), "copy logits from device");
+  if (use_cache) impl_->cache_length += seq_len;
 }
 
 }  // namespace kiln

@@ -7,10 +7,10 @@
 
 namespace kiln {
 
-// Device-resident, uncached forward pass for one sequence. It deliberately
-// has a smaller contract than Model: GPU KV-cache ownership and batched
-// scheduling need their own device data layouts, so treating either as a
-// hidden fallback to the CPU path would make the executor's behavior unclear.
+// Device-resident forward pass for one sequence. Its contiguous GPU KV cache
+// intentionally matches KVCache's single-sequence contract; batching and
+// paging need a different device layout and are not hidden behind a CPU
+// fallback.
 class CudaModel {
  public:
   explicit CudaModel(const Model& model);
@@ -27,9 +27,18 @@ class CudaModel {
   void Forward(const int32_t* tokens, int64_t seq_len, int64_t start_pos,
                float* out_logits) const;
 
+  // Appends tokens to the executor-owned GPU cache. start_pos must equal the
+  // current cache length, which prevents a caller from accidentally using
+  // keys from one sequence with positions from another.
+  void ForwardCached(const int32_t* tokens, int64_t seq_len,
+                     int64_t start_pos, float* out_logits) const;
+  void ResetCache() const;
+
  private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
+  void ForwardImpl(const int32_t* tokens, int64_t seq_len, int64_t start_pos,
+                   float* out_logits, bool use_cache) const;
 };
 
 }  // namespace kiln

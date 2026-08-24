@@ -73,6 +73,7 @@ if(KILN_BUILD_CUDA)
   target_include_directories(kiln_cuda PUBLIC csrc)
   target_link_libraries(kiln_cuda PUBLIC CUDA::cudart CUDA::cublas)
   set_target_properties(kiln_cuda PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
     CUDA_STANDARD 17
     CUDA_STANDARD_REQUIRED ON
     CUDA_ARCHITECTURES ${KILN_CUDA_ARCHITECTURES}

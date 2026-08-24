@@ -51,14 +51,22 @@ def compare_prompts(model_dir: Path, prompts: list[str]) -> list[dict[str, float
         input_ids = tokenizer.encode(prompt, add_special_tokens=False)
         if not input_ids:
             raise ValueError("prompt must produce at least one token")
+        reference_states: list[np.ndarray] = []
+        handles = [layer.register_forward_hook(
+            lambda _module, _inputs, output, states=reference_states:
+            states.append((output[0] if isinstance(output, tuple) else output).detach().float().numpy()[0])
+        ) for layer in reference.model.layers]
         with torch.no_grad():
-            reference_logits = reference(
-                torch.tensor([input_ids], dtype=torch.long)
-            ).logits[0, -1].float().numpy()
+            reference_logits = reference(torch.tensor([input_ids], dtype=torch.long)).logits[0, -1].float().numpy()
+        for handle in handles:
+            handle.remove()
         kiln_logits = kiln_model.forward(
             np.asarray(input_ids, dtype=np.int32), 1, len(input_ids), None, 0, None
         )[-1]
         difference = np.abs(kiln_logits - reference_logits)
+        kiln_states = kiln_model.forward_hidden_states(np.asarray(input_ids, dtype=np.int32))
+        layer_differences = [float(np.abs(kiln - reference).max())
+                             for kiln, reference in zip(kiln_states, reference_states)]
         results.append({
             "prompt": prompt,
             "prompt_tokens": len(input_ids),
@@ -66,6 +74,7 @@ def compare_prompts(model_dir: Path, prompts: list[str]) -> list[dict[str, float
             "max_abs_diff": float(difference.max()),
             "mean_abs_diff": float(difference.mean()),
             "top1_matches": bool(int(kiln_logits.argmax()) == int(reference_logits.argmax())),
+            "max_layer_abs_diff": max(layer_differences),
         })
     return results
 

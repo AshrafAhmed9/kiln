@@ -29,6 +29,13 @@ the Hugging Face top token; their largest final-logit difference is
 7.44×10⁻⁵. `tools/hf_parity.py --prompts-file tools/fixtures/hf_parity_prompts.txt`
 loads the reference once and emits one result per prompt.
 
+Kiln now exposes a debug-only post-layer hidden-state capture path. On the
+original eight-token prompt, all 30 layers were compared with Hugging Face;
+the largest hidden-state absolute difference was 0.02246. That is materially
+larger than the final-logit difference because both implementations start from
+BF16 checkpoint tensors but execute independently in FP32; it is recorded as
+the observed result, not presented as exact layer parity.
+
 ## The tokenizer result was useful precisely because it failed
 
 The first 10,000-string real fixture found a leading-space bug: the generic

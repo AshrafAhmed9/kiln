@@ -55,7 +55,8 @@ class Model {
   // every row including padding -- the caller decides which rows matter.
   void Forward(const int32_t* tokens, int64_t batch_size, int64_t seq_len,
                const int64_t* valid_lengths, int64_t start_pos,
-               KVCache* cache, float* out_logits) const;
+               KVCache* cache, float* out_logits,
+               std::vector<std::vector<float>>* layer_outputs = nullptr) const;
 
   // Runs one cached decode token for every sequence in a batch. The matrix
   // work is shared across the batch, but each sequence keeps a separate KV

@@ -57,6 +57,23 @@ py::array_t<float> ModelForward(const Model& model,
   return out;
 }
 
+py::list ModelForwardHiddenStates(const Model& model, ContiguousInt32Array tokens) {
+  auto input = tokens.request();
+  if (input.ndim != 1) throw std::invalid_argument("tokens must be 1D");
+  std::vector<std::vector<float>> states;
+  std::vector<float> logits(input.shape[0] * model.config().vocab_size);
+  model.Forward(static_cast<const int32_t*>(input.ptr), 1, input.shape[0], nullptr,
+                0, nullptr, logits.data(), &states);
+  py::list out;
+  for (const auto& state : states) {
+    py::array_t<float> array(
+        std::vector<py::ssize_t>{input.shape[0], model.config().hidden_size});
+    std::memcpy(array.mutable_data(), state.data(), state.size() * sizeof(float));
+    out.append(std::move(array));
+  }
+  return out;
+}
+
 py::array_t<float> ModelForwardDecodeBatch(const Model& model,
                                             ContiguousInt32Array tokens,
                                             std::vector<int64_t> positions,
@@ -161,6 +178,8 @@ PYBIND11_MODULE(_C, m) {
            py::arg("batch_size"), py::arg("seq_len"),
            py::arg("valid_lengths") = py::none(), py::arg("start_pos") = 0,
            py::arg("cache") = nullptr)
+      .def("forward_hidden_states", &kiln::ModelForwardHiddenStates,
+           py::arg("tokens"))
       .def("forward_decode_batch", &kiln::ModelForwardDecodeBatch,
            py::arg("tokens"), py::arg("positions"), py::arg("caches"))
       .def("merge_lora_into_layer", &kiln::ModelMergeLoraIntoLayer,

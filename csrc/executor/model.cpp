@@ -124,7 +124,8 @@ Model Model::LoadFromSafetensors(const ModelConfig& config,
 void Model::Forward(const int32_t* tokens, int64_t batch_size,
                      int64_t seq_len, const int64_t* valid_lengths,
                      int64_t start_pos, KVCache* cache,
-                     float* out_logits) const {
+                     float* out_logits,
+                     std::vector<std::vector<float>>* layer_outputs) const {
   // A cache only makes sense for one sentence at a time in this project's
   // current design (Phase 3's cache is built for a single sequence; batching
   // several sentences together with no cache at all is Phase 4's separate
@@ -230,6 +231,7 @@ void Model::Forward(const int32_t* tokens, int64_t batch_size,
     SwiGlu(normed.data(), layer.w_gate.data(), layer.w_up.data(),
            layer.w_down.data(), mlp_out.data(), n_rows, d, config_.ffn_hidden);
     for (int64_t i = 0; i < n_rows * d; ++i) x[i] += mlp_out[i];  // residual add
+    if (layer_outputs != nullptr) layer_outputs->push_back(x);
   }
 
   if (cache != nullptr) cache->Advance(seq_len);

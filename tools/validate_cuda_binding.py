@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import pathlib
+import sys
+
 import numpy as np
+
+# A tool run as `python tools/...` puts only tools/ on sys.path. Add the
+# repository root so it imports the extension CMake placed in kiln_py/.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from kiln_py import _C
 

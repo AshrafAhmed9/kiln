@@ -68,13 +68,13 @@ class DeviceBuffer {
   size_t size() const { return count_; }
 
   void CopyFromHost(const T* host, size_t count) {
-    if (count != count_) throw std::invalid_argument("device copy size mismatch");
-    CheckCuda(cudaMemcpy(data_, host, count_ * sizeof(T), cudaMemcpyHostToDevice),
+    if (count > count_) throw std::invalid_argument("device copy exceeds buffer capacity");
+    CheckCuda(cudaMemcpy(data_, host, count * sizeof(T), cudaMemcpyHostToDevice),
               "copy to device");
   }
   void CopyToHost(T* host, size_t count) const {
-    if (count != count_) throw std::invalid_argument("device copy size mismatch");
-    CheckCuda(cudaMemcpy(host, data_, count_ * sizeof(T), cudaMemcpyDeviceToHost),
+    if (count > count_) throw std::invalid_argument("device copy exceeds buffer capacity");
+    CheckCuda(cudaMemcpy(host, data_, count * sizeof(T), cudaMemcpyDeviceToHost),
               "copy from device");
   }
 

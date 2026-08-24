@@ -99,6 +99,32 @@ TEST(CudaGemm, CuBlasMatchesCpuReference) {
   for (size_t i = 0; i < actual.size(); ++i) EXPECT_NEAR(actual[i], expected[i], 1e-5f);
 }
 
+TEST(CudaElementwise, MatchesCpuReference) {
+  std::vector<float> left = {-2.0f, -0.5f, 0.0f, 1.5f};
+  std::vector<float> right = {0.25f, 2.0f, -3.0f, 4.0f};
+  std::vector<float> expected_add = left;
+  std::vector<float> expected_swiglu(left.size());
+  for (size_t i = 0; i < left.size(); ++i) {
+    expected_add[i] += right[i];
+    expected_swiglu[i] = (left[i] / (1.0f + std::exp(-left[i]))) * right[i];
+  }
+  DeviceBuffer<float> device_left(left.size());
+  DeviceBuffer<float> device_gate(left.size());
+  DeviceBuffer<float> device_right(right.size());
+  DeviceBuffer<float> device_out(left.size());
+  device_left.CopyFrom(left);
+  device_gate.CopyFrom(left);
+  device_right.CopyFrom(right);
+  AddCuda(device_left.data(), device_right.data(), left.size());
+  SyncKernel("AddCuda");
+  std::vector<float> actual_add = device_left.CopyToHost();
+  for (size_t i = 0; i < left.size(); ++i) EXPECT_NEAR(actual_add[i], expected_add[i], 1e-6f);
+  SwiGluActivateCuda(device_gate.data(), device_right.data(), device_out.data(), left.size());
+  SyncKernel("SwiGluActivateCuda");
+  std::vector<float> actual_swiglu = device_out.CopyToHost();
+  for (size_t i = 0; i < left.size(); ++i) EXPECT_NEAR(actual_swiglu[i], expected_swiglu[i], 1e-6f);
+}
+
 TEST(CudaSampler, MatchesCpuGreedyArgmax) {
   std::vector<float> logits = {-2.0f, 0.1f, 5.0f, 4.0f, 3.0f};
   SamplerConfig config;

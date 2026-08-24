@@ -64,6 +64,7 @@ if(KILN_BUILD_CUDA)
   add_library(kiln_cuda STATIC
     csrc/kernels/cuda/attention.cu
     csrc/kernels/cuda/gemm.cu
+    csrc/kernels/cuda/elementwise.cu
     csrc/kernels/cuda/rmsnorm.cu
     csrc/kernels/cuda/rope.cu
     csrc/kernels/cuda/sampler.cu

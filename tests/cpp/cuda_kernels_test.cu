@@ -8,7 +8,9 @@
 #include <vector>
 
 #include "executor/attention.h"
+#include "executor/cuda_model.h"
 #include "executor/gemm.h"
+#include "executor/model.h"
 #include "executor/rmsnorm.h"
 #include "executor/rope.h"
 #include "executor/sampler.h"
@@ -53,6 +55,19 @@ class DeviceBuffer {
 void SyncKernel(const char* kernel) {
   CheckCuda(cudaGetLastError(), kernel);
   CheckCuda(cudaDeviceSynchronize(), kernel);
+}
+
+ModelConfig TinyCudaModelConfig() {
+  ModelConfig config;
+  config.vocab_size = 16;
+  config.hidden_size = 8;
+  config.n_layers = 2;
+  config.n_heads = 2;
+  config.n_kv_heads = 1;
+  config.head_dim = 4;
+  config.ffn_hidden = 16;
+  config.max_seq_len = 8;
+  return config;
 }
 
 TEST(CudaRmsNorm, MatchesCpuReference) {
@@ -185,6 +200,22 @@ TEST(CudaAttention, MatchesCpuReference) {
   SyncKernel("AttentionCuda");
   std::vector<float> actual = device_output.CopyToHost();
   for (size_t i = 0; i < actual.size(); ++i) EXPECT_NEAR(actual[i], expected[i], 1e-5f);
+}
+
+TEST(CudaModel, FullPrefillMatchesCpuReference) {
+  Model model = Model::LoadRandom(TinyCudaModelConfig(), /*seed=*/29);
+  const std::vector<int32_t> tokens = {1, 2, 3};
+  std::vector<float> expected(tokens.size() * model.config().vocab_size);
+  model.Forward(tokens.data(), /*batch_size=*/1, tokens.size(), nullptr,
+                /*start_pos=*/0, nullptr, expected.data());
+
+  CudaModel cuda_model(model);
+  std::vector<float> actual(expected.size());
+  cuda_model.Forward(tokens.data(), tokens.size(), /*start_pos=*/0,
+                     actual.data());
+  for (size_t i = 0; i < actual.size(); ++i) {
+    EXPECT_NEAR(actual[i], expected[i], 1e-4f);
+  }
 }
 
 }  // namespace

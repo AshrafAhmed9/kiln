@@ -62,6 +62,7 @@ if(KILN_BUILD_CUDA)
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
   add_library(kiln_cuda STATIC
+    csrc/executor/cuda_model.cu
     csrc/kernels/cuda/attention.cu
     csrc/kernels/cuda/gemm.cu
     csrc/kernels/cuda/elementwise.cu

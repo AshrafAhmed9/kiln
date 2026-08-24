@@ -8,6 +8,8 @@
 
 namespace kiln {
 
+class CudaModel;
+
 // One decoder layer's weights, HF layout throughout: every matrix is
 // [out_features, in_features] so GemmBT (C = A @ B^T) can use it directly
 // without a transpose pass at load time.
@@ -78,6 +80,8 @@ class Model {
                           int64_t rank, float scale);
 
  private:
+  friend class CudaModel;
+
   ModelConfig config_;
   std::vector<float> tok_embeddings;  // [vocab_size, dim]
   std::vector<LayerWeights> layers;

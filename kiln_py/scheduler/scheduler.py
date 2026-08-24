@@ -69,6 +69,7 @@ class Request:
 # exactly the point of keeping "who runs when" separate from "how do we
 # compute the next word."
 ExecutorFn = Callable[[Request], int]
+BatchExecutorFn = Callable[[List[Request]], List[int]]
 
 
 class Scheduler:
@@ -80,9 +81,13 @@ class Scheduler:
     than let the whole server run out of memory and crash.
     """
 
-    def __init__(self, max_batch_tokens: int, executor: ExecutorFn):
+    def __init__(self, max_batch_tokens: int, executor: ExecutorFn | None = None,
+                 batch_executor: BatchExecutorFn | None = None):
+        if executor is None and batch_executor is None:
+            raise ValueError("Scheduler needs an executor")
         self.max_batch_tokens = max_batch_tokens
         self.executor = executor
+        self.batch_executor = batch_executor
         self.waiting: List[Request] = []
         self.running: List[Request] = []
         self.done: List[Request] = []
@@ -140,9 +145,18 @@ class Scheduler:
         single step, is what makes the batch continuously refill itself
         instead of waiting for every request to finish at once.
         """
-        for request in self.running:
-            next_token = self.executor(request)
-            request.tokens.append(next_token)
+        if self.batch_executor is not None and self.running:
+            next_tokens = self.batch_executor(self.running)
+            if len(next_tokens) != len(self.running):
+                raise RuntimeError("batch executor returned the wrong number of tokens")
+            for request, next_token in zip(self.running, next_tokens):
+                request.tokens.append(next_token)
+        else:
+            for request in self.running:
+                # The constructor rejects an executor-less non-batched
+                # scheduler, so this assertion only narrows the optional type.
+                assert self.executor is not None
+                request.tokens.append(self.executor(request))
 
         still_running = []
         for request in self.running:

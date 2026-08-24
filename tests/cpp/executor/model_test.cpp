@@ -100,6 +100,52 @@ TEST(Model, CachedDecodeMatchesFullRecompute) {
   }
 }
 
+TEST(Model, BatchedCachedDecodeMatchesIndependentCachedSequences) {
+  ModelConfig config = TinyConfig();
+  Model model = Model::LoadRandom(config, /*seed=*/21);
+  KVCache first_cache(config.n_layers, config.max_seq_len, config.n_kv_heads,
+                      config.head_dim);
+  KVCache second_cache(config.n_layers, config.max_seq_len, config.n_kv_heads,
+                       config.head_dim);
+  int32_t first_prompt[] = {1, 2};
+  int32_t second_prompt[] = {3, 4, 5};
+  std::vector<float> ignored_first(2 * config.vocab_size);
+  std::vector<float> ignored_second(3 * config.vocab_size);
+  model.Forward(first_prompt, 1, 2, nullptr, 0, &first_cache,
+                ignored_first.data());
+  model.Forward(second_prompt, 1, 3, nullptr, 0, &second_cache,
+                ignored_second.data());
+
+  int32_t decode_tokens[] = {6, 7};
+  int64_t positions[] = {2, 3};
+  KVCache* caches[] = {&first_cache, &second_cache};
+  std::vector<float> batched_logits(2 * config.vocab_size);
+  model.ForwardDecodeBatch(decode_tokens, 2, positions, caches,
+                           batched_logits.data());
+
+  KVCache first_reference(config.n_layers, config.max_seq_len,
+                          config.n_kv_heads, config.head_dim);
+  KVCache second_reference(config.n_layers, config.max_seq_len,
+                           config.n_kv_heads, config.head_dim);
+  model.Forward(first_prompt, 1, 2, nullptr, 0, &first_reference,
+                ignored_first.data());
+  model.Forward(second_prompt, 1, 3, nullptr, 0, &second_reference,
+                ignored_second.data());
+  std::vector<float> first_logits(config.vocab_size);
+  std::vector<float> second_logits(config.vocab_size);
+  model.Forward(decode_tokens, 1, 1, nullptr, 2, &first_reference,
+                first_logits.data());
+  model.Forward(decode_tokens + 1, 1, 1, nullptr, 3, &second_reference,
+                second_logits.data());
+
+  for (int64_t i = 0; i < config.vocab_size; ++i) {
+    EXPECT_NEAR(batched_logits[i], first_logits[i], 1e-3f);
+    EXPECT_NEAR(batched_logits[config.vocab_size + i], second_logits[i], 1e-3f);
+  }
+  EXPECT_EQ(first_cache.length(), 3);
+  EXPECT_EQ(second_cache.length(), 4);
+}
+
 // Phase 4's whole point: running two sentences together, padded into one
 // rectangle, should give each sentence exactly the answer it would have
 // gotten running alone -- padding must never leak into a real answer.

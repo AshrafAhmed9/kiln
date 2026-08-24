@@ -507,3 +507,25 @@ was fixed, but still exposes the deliberately simplified Unicode,
 punctuation, and whitespace pre-tokenizer. Those mismatches prevent calling
 the tokenizer conformant, and a complete fix needs an equivalent Unicode-aware
 pre-tokenization implementation rather than a more flattering fixture.
+
+## Phase 23 — Cached decode batching reaches the API
+
+**What:** `Model::ForwardDecodeBatch` accepts one decode token, absolute
+position, and KV cache per active sequence. It batches the model's matrix work
+across those sequences while attention reads and appends to each sequence's
+own cache. A small Python worker connects normal `/v1/completions` calls to
+the scheduler and uses that executor once requests are prefetched.
+
+**Why it works:** batched matrix multiplication is safe because all rows use
+the same model weights; the rows only become separate again at attention,
+where their independent caches prevent conversation state from mixing. The C++
+test compares a two-sequence batch directly with two independent cached decode
+calls, so it checks the real numerical contract rather than just that the API
+returns two responses.
+
+**What it cost:** this is intentionally the minimum real integration, not a
+claim of a finished vLLM-style engine. Prompts still prefill one at a time
+because the executor has no ragged prefill interface, and SSE streaming keeps
+its direct generation loop until its per-token delivery and cancellation
+lifecycle is tested against the scheduler. The contiguous per-sequence cache
+also means this path has not yet inherited Phase 8's paged prefix sharing.

@@ -57,6 +57,15 @@ class Model {
                const int64_t* valid_lengths, int64_t start_pos,
                KVCache* cache, float* out_logits) const;
 
+  // Runs one cached decode token for every sequence in a batch. The matrix
+  // work is shared across the batch, but each sequence keeps a separate KV
+  // cache and absolute position, which is the minimum contract real
+  // continuous batching needs. `tokens`, `start_positions`, and `caches`
+  // each have batch_size entries; out_logits is [batch_size, vocab_size].
+  void ForwardDecodeBatch(const int32_t* tokens, int64_t batch_size,
+                          const int64_t* start_positions,
+                          KVCache* const* caches, float* out_logits) const;
+
   const ModelConfig& config() const { return config_; }
 
   // Folds a trained LoRA adapter into one weight matrix of one layer, in

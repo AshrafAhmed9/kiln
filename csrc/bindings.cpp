@@ -57,6 +57,28 @@ py::array_t<float> ModelForward(const Model& model,
   return out;
 }
 
+py::array_t<float> ModelForwardDecodeBatch(const Model& model,
+                                            ContiguousInt32Array tokens,
+                                            std::vector<int64_t> positions,
+                                            py::list caches) {
+  auto tokens_buf = tokens.request();
+  int64_t batch_size = tokens_buf.shape[0];
+  if (tokens_buf.ndim != 1 || static_cast<int64_t>(positions.size()) != batch_size ||
+      static_cast<int64_t>(py::len(caches)) != batch_size) {
+    throw std::invalid_argument(
+        "forward_decode_batch expects equally sized 1D tokens, positions, and caches");
+  }
+  std::vector<KVCache*> cache_ptrs;
+  cache_ptrs.reserve(batch_size);
+  for (py::handle cache : caches) cache_ptrs.push_back(cache.cast<KVCache*>());
+
+  py::array_t<float> out({batch_size, model.config().vocab_size});
+  model.ForwardDecodeBatch(static_cast<const int32_t*>(tokens_buf.ptr),
+                           batch_size, positions.data(), cache_ptrs.data(),
+                           static_cast<float*>(out.request().ptr));
+  return out;
+}
+
 // A byte-level tokenizer's decoded output is raw bytes, not necessarily
 // valid UTF-8 text on its own -- especially one word (token) at a time, since
 // a single character in a real alphabet can be spread across more than one
@@ -124,6 +146,8 @@ PYBIND11_MODULE(_C, m) {
            py::arg("batch_size"), py::arg("seq_len"),
            py::arg("valid_lengths") = py::none(), py::arg("start_pos") = 0,
            py::arg("cache") = nullptr)
+      .def("forward_decode_batch", &kiln::ModelForwardDecodeBatch,
+           py::arg("tokens"), py::arg("positions"), py::arg("caches"))
       .def_property_readonly("config", &kiln::Model::config);
 
   py::class_<kiln::KVCache>(m, "KVCache")

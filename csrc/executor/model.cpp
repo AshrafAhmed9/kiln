@@ -240,6 +240,80 @@ void Model::Forward(const int32_t* tokens, int64_t batch_size,
          config_.vocab_size);
 }
 
+void Model::ForwardDecodeBatch(const int32_t* tokens, int64_t batch_size,
+                               const int64_t* start_positions,
+                               KVCache* const* caches,
+                               float* out_logits) const {
+  if (batch_size <= 0) return;
+  for (int64_t b = 0; b < batch_size; ++b) {
+    if (caches[b] == nullptr) {
+      throw std::invalid_argument(
+          "Model::ForwardDecodeBatch requires one KV cache per sequence");
+    }
+    if (caches[b]->length() != start_positions[b]) {
+      throw std::invalid_argument(
+          "Model::ForwardDecodeBatch cache length must match start position");
+    }
+  }
+
+  int64_t d = config_.hidden_size;
+  int64_t q_dim = config_.n_heads * config_.head_dim;
+  int64_t kv_dim = config_.n_kv_heads * config_.head_dim;
+
+  std::vector<float> x(batch_size * d);
+  for (int64_t b = 0; b < batch_size; ++b) {
+    std::memcpy(x.data() + b * d,
+                tok_embeddings.data() + tokens[b] * d,
+                d * sizeof(float));
+  }
+
+  std::vector<float> normed(batch_size * d);
+  std::vector<float> q(batch_size * q_dim);
+  std::vector<float> k(batch_size * kv_dim);
+  std::vector<float> v(batch_size * kv_dim);
+  std::vector<float> attn_out(batch_size * q_dim);
+  std::vector<float> proj(batch_size * d);
+  std::vector<float> mlp_out(batch_size * d);
+
+  for (int64_t layer_idx = 0; layer_idx < config_.n_layers; ++layer_idx) {
+    const LayerWeights& layer = layers[layer_idx];
+    RmsNorm(x.data(), layer.attn_norm.data(), normed.data(), batch_size, d,
+            config_.rms_eps);
+    GemmBT(normed.data(), layer.wq.data(), q.data(), batch_size, d, q_dim);
+    GemmBT(normed.data(), layer.wk.data(), k.data(), batch_size, d, kv_dim);
+    GemmBT(normed.data(), layer.wv.data(), v.data(), batch_size, d, kv_dim);
+    ApplyRope(q.data(), start_positions, batch_size, config_.n_heads,
+              config_.head_dim, config_.rope_theta);
+    ApplyRope(k.data(), start_positions, batch_size, config_.n_kv_heads,
+              config_.head_dim, config_.rope_theta);
+
+    for (int64_t b = 0; b < batch_size; ++b) {
+      caches[b]->Append(layer_idx, k.data() + b * kv_dim,
+                        v.data() + b * kv_dim, /*n_new=*/1);
+      int64_t kv_len = caches[b]->length() + 1;
+      Attention(q.data() + b * q_dim, caches[b]->K(layer_idx),
+                caches[b]->V(layer_idx), attn_out.data() + b * q_dim,
+                /*seq_len=*/1, kv_len, config_.n_heads,
+                config_.n_kv_heads, config_.head_dim, start_positions[b]);
+    }
+
+    GemmBT(attn_out.data(), layer.wo.data(), proj.data(), batch_size, q_dim, d);
+    for (int64_t i = 0; i < batch_size * d; ++i) x[i] += proj[i];
+    RmsNorm(x.data(), layer.ffn_norm.data(), normed.data(), batch_size, d,
+            config_.rms_eps);
+    SwiGlu(normed.data(), layer.w_gate.data(), layer.w_up.data(),
+           layer.w_down.data(), mlp_out.data(), batch_size, d,
+           config_.ffn_hidden);
+    for (int64_t i = 0; i < batch_size * d; ++i) x[i] += mlp_out[i];
+  }
+
+  for (int64_t b = 0; b < batch_size; ++b) caches[b]->Advance(/*n_new=*/1);
+  RmsNorm(x.data(), final_norm.data(), normed.data(), batch_size, d,
+          config_.rms_eps);
+  GemmBT(normed.data(), lm_head.data(), out_logits, batch_size, d,
+         config_.vocab_size);
+}
+
 void Model::MergeLoraIntoLayer(int64_t layer_idx, const std::string& which,
                                const float* lora_a, const float* lora_b,
                                int64_t rank, float scale) {

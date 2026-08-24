@@ -64,6 +64,25 @@ def test_a_finishing_request_frees_room_for_a_waiting_one():
     assert second.state == RequestState.DONE
 
 
+def test_batch_executor_advances_running_requests_together():
+    calls = []
+
+    def batch_executor(requests: list[Request]) -> list[int]:
+        calls.append([request.request_id for request in requests])
+        return [request.request_id + 10 for request in requests]
+
+    scheduler = Scheduler(max_batch_tokens=20, batch_executor=batch_executor)
+    first = scheduler.submit(prompt_tokens=[1], max_new_tokens=1)
+    second = scheduler.submit(prompt_tokens=[2], max_new_tokens=1)
+
+    scheduler.step()  # admits both requests
+    scheduler.step()  # advances both in one batch-executor call
+
+    assert calls == [[first.request_id, second.request_id]]
+    assert first.tokens[-1] == 10
+    assert second.tokens[-1] == 11
+
+
 @pytest.mark.parametrize("seed", [1, 2, 3, 4, 5])
 def test_memory_budget_is_never_exceeded_under_random_arrivals(seed):
     """Throws a batch of randomly-sized, randomly-arriving requests at the

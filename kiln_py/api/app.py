@@ -33,6 +33,7 @@ from kiln_py.metrics import (
 )
 
 from kiln_py import _C
+from kiln_py.api.batching_service import CompletionBatchService
 from kiln_py.runtime.byte_tokenizer import write_byte_level_tokenizer_json
 from kiln_py.runtime.generate import generate
 
@@ -68,6 +69,9 @@ def _build_toy_model_and_tokenizer():
 
 
 _model, _tokenizer = _build_toy_model_and_tokenizer()
+_completion_batches = CompletionBatchService(
+    _model, _tokenizer, max_batch_tokens=_model.config.max_seq_len
+)
 
 
 class CompletionRequest(BaseModel):
@@ -105,8 +109,9 @@ def create_completion(request: CompletionRequest):
 
     completions_total.inc()
     with completion_latency_seconds.time():
-        text = generate(_model, _tokenizer, request.prompt, request.max_tokens,
-                         sampler_config, seed=request.seed)
+        text = _completion_batches.complete(
+            request.prompt, request.max_tokens, sampler_config, request.seed
+        )
     tokens_generated_total.inc(request.max_tokens)
 
     return {

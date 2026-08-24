@@ -6,6 +6,8 @@ the small, randomly-initialized one described in app.py: these tests check
 that the request/response *shapes* are correct and that generation runs to
 completion without crashing, not that the generated words make sense.
 """
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi.testclient import TestClient
 
 from kiln_py.api.app import app
@@ -72,6 +74,19 @@ def test_completion_returns_openai_shaped_response():
     assert body["object"] == "text_completion"
     assert len(body["choices"]) == 1
     assert isinstance(body["choices"][0]["text"], str)
+
+
+def test_concurrent_non_streaming_completions_use_the_scheduler_path():
+    def complete(prompt: str):
+        return client.post("/v1/completions", json={
+            "prompt": prompt, "max_tokens": 3, "seed": 7,
+        })
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(complete, ["first request", "second request"]))
+
+    assert all(response.status_code == 200 for response in responses)
+    assert all(response.json()["object"] == "text_completion" for response in responses)
 
 
 def test_same_seed_gives_same_completion():

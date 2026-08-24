@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "executor/attention.h"
+#include "executor/gemm.h"
 #include "executor/rmsnorm.h"
 #include "executor/rope.h"
 #include "executor/sampler.h"
@@ -73,6 +74,28 @@ TEST(CudaRmsNorm, MatchesCpuReference) {
               kRows, kDim, 1e-5f);
   SyncKernel("RmsNormCuda");
   std::vector<float> actual = device_output.CopyToHost();
+  for (size_t i = 0; i < actual.size(); ++i) EXPECT_NEAR(actual[i], expected[i], 1e-5f);
+}
+
+TEST(CudaGemm, CuBlasMatchesCpuReference) {
+  constexpr int64_t kRows = 3;
+  constexpr int64_t kInput = 4;
+  constexpr int64_t kOutput = 5;
+  std::vector<float> a(kRows * kInput);
+  std::vector<float> b(kOutput * kInput);
+  for (size_t i = 0; i < a.size(); ++i) a[i] = (static_cast<int>(i) - 4) * 0.125f;
+  for (size_t i = 0; i < b.size(); ++i) b[i] = (static_cast<int>(i) - 7) * 0.1f;
+  std::vector<float> expected(kRows * kOutput);
+  GemmBT(a.data(), b.data(), expected.data(), kRows, kInput, kOutput);
+  DeviceBuffer<float> device_a(a.size());
+  DeviceBuffer<float> device_b(b.size());
+  DeviceBuffer<float> device_out(expected.size());
+  device_a.CopyFrom(a);
+  device_b.CopyFrom(b);
+  GemmBTCuda(device_a.data(), device_b.data(), device_out.data(), kRows, kInput,
+             kOutput);
+  SyncKernel("GemmBTCuda");
+  std::vector<float> actual = device_out.CopyToHost();
   for (size_t i = 0; i < actual.size(); ++i) EXPECT_NEAR(actual[i], expected[i], 1e-5f);
 }
 

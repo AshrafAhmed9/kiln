@@ -63,12 +63,13 @@ if(KILN_BUILD_CUDA)
   find_package(CUDAToolkit REQUIRED)
   add_library(kiln_cuda STATIC
     csrc/kernels/cuda/attention.cu
+    csrc/kernels/cuda/gemm.cu
     csrc/kernels/cuda/rmsnorm.cu
     csrc/kernels/cuda/rope.cu
     csrc/kernels/cuda/sampler.cu
   )
   target_include_directories(kiln_cuda PUBLIC csrc)
-  target_link_libraries(kiln_cuda PUBLIC CUDA::cudart)
+  target_link_libraries(kiln_cuda PUBLIC CUDA::cudart CUDA::cublas)
   set_target_properties(kiln_cuda PROPERTIES
     CUDA_STANDARD 17
     CUDA_STANDARD_REQUIRED ON

@@ -4,6 +4,10 @@
 
 namespace kiln {
 
+// Device-resident equivalent of GemmBT: A[M,K] times B_transposed[N,K].
+// cuBLAS owns dense GEMM by the project's deliberate kernel strategy.
+void GemmBTCuda(const float* a, const float* b_transposed, float* c,
+                int64_t m, int64_t k, int64_t n);
 void RmsNormCuda(const float* x, const float* weight, float* out,
                  int64_t n_rows, int64_t dim, float eps);
 void ArgmaxCuda(const float* logits, int64_t vocab_size, int32_t* out_index);

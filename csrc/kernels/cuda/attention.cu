@@ -1,5 +1,5 @@
-// Causal grouped-query attention on the GPU. UNVERIFIED IN THIS SESSION --
-// see docs/learning/phase-07.md. Deliberately mirrors the already-tested
+// Causal grouped-query attention on the GPU. It passed a small CPU-vs-GPU
+// check on Kaggle's P100 -- see docs/learning/phase-07.md. Deliberately mirrors the already-tested
 // CPU version (csrc/executor/attention.cpp) step for step -- compute every
 // visible score, find the largest, turn scores into normalized weights,
 // then take the weighted average of the values -- just with each step

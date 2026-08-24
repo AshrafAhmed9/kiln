@@ -10,8 +10,8 @@ each one explains.
 
 ## 1. FlashAttention-style tiling — the single biggest gap
 
-Kiln's attention (both the tested CPU version and the unverified CUDA
-kernel written to match it) computes and holds the *entire* row of
+Kiln's attention (both the tested CPU version and the raw CUDA kernel,
+which passed a small CPU-vs-GPU check on a Kaggle P100) computes and holds the *entire* row of
 attention scores for a query before turning it into an output — read
 every key, store every score, then reduce. FlashAttention's actual
 contribution is an IO-aware *tiling* scheme: process keys and values in
@@ -66,10 +66,10 @@ Beyond attention specifically: vLLM ships fused dequantization-GEMM
 kernels tuned per quantization format (AWQ, GPTQ, Marlin-style kernels),
 warp-level-tuned paged-attention variants for different head
 configurations, and years of profiling-driven micro-optimization. Kiln's
-CUDA kernels (Phase 7) are written once, mirror the already-tested CPU
-structure for correctness, and — stated plainly elsewhere in this
-project — have never actually been compiled or run, let alone tuned
-against a profiler.
+raw CUDA kernels (Phase 7) are written once and mirror the already-tested
+CPU structure for correctness. They have compiled and passed small
+reference tests on a P100, but have not been tuned against a profiler,
+measured for throughput, or integrated into the model executor.
 
 ## 6. Speculative decoding: single draft chain vs. tree verification
 

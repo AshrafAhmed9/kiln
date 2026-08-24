@@ -47,9 +47,10 @@ traffic.
 
 - **INT8 shows no CPU speedup.** The memory reduction and the accuracy
   cost are real, measured numbers. The *speed* win real INT8 quantization
-  provides comes from an INT8 GPU kernel — this project's Phase 7 kernels
-  are written but unverified (no GPU here), so there is genuinely nothing
-  to measure yet on the speed axis. Reporting a CPU number as if it
+  provides comes from an INT8 GPU kernel — this project's Phase 7 FP32
+  kernels have compiled and passed CPU-vs-GPU correctness tests on a Kaggle
+  P100, but there is no INT8 GPU kernel or performance measurement yet.
+  Reporting a CPU number as if it
   demonstrated the GPU win would be the fabrication this project
   specifically refuses to do.
 - **Speculative decoding shows a 1.0× (zero) reduction here, and that's
@@ -79,9 +80,10 @@ way to shrink the model's numbers down for less memory use; a proven
 smaller model as a scout; API keys and usage limits for multiple
 separate users; and a small web page to try all of it.
 
-**What doesn't work yet, and why, in one line each:** the GPU-only pieces
-(the hand-written fast kernels) are written but never compiled, because
-this was built on a machine with no NVIDIA GPU. One real Llama-family
+**What doesn't work yet, and why, in one line each:** the raw CUDA kernels
+now compile and pass small CPU-vs-GPU correctness tests on a Kaggle P100,
+but they are neither profiled nor integrated into model execution; Triton
+has not yet been compiled or run. One real Llama-family
 checkpoint has now passed a final-logit comparison (details below), but
 per-layer parity and full tokenizer conformance remain unfinished. And
 nobody has actually used this — there's no live website, no real users, no

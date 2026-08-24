@@ -1,6 +1,5 @@
-// RMSNorm on the GPU. UNVERIFIED IN THIS SESSION: written on a machine with
-// no NVIDIA GPU, so this has not been compiled or run yet -- see
-// docs/learning/phase-07.md and docs/defense.md for the honest status.
+// RMSNorm on the GPU. It passed a small CPU-vs-GPU check on Kaggle's P100;
+// see docs/learning/phase-07.md and docs/defense.md for the honest status.
 // The math is identical to csrc/executor/rmsnorm.cpp; only the way work is
 // split across threads is different.
 #include <cuda_runtime.h>

@@ -30,11 +30,12 @@ it's accurate and current as of this handoff.
    didn't happen. `docs/postmortems/TEMPLATE.md` has no incident in it on
    purpose. If Ashraf asks for a public launch, that is a real decision
    for him to make outside of a coding session, not something to simulate.
-3. **This machine (and likely yours) has no NVIDIA GPU.** `csrc/kernels/`
-   (raw CUDA + Triton) is written to spec, mirrors the already-tested CPU
-   code, but has **never been compiled or run**. Don't claim otherwise.
-   If you do have real GPU access, that unlocks a lot of genuinely
-   deferred work — see the backlog below.
+3. **This machine (and likely yours) has no NVIDIA GPU.** Raw CUDA was
+   nevertheless compiled and checked remotely on a Kaggle Tesla P100
+   (sm_60, NVCC 12.8): four CPU-vs-GPU tests and the full 57-test CTest run
+   passed at revision `dc792e1`. Triton remains unrun; no kernel is profiled
+   or integrated into model execution. Do not inflate that narrow result
+   into a GPU performance claim. See the backlog below.
 4. **Comments are plain, human, jargon-free language** — someone should
    be able to answer an interview question about a piece of code just by
    reading its comment. This is a standing instruction from Ashraf; don't
@@ -144,13 +145,13 @@ Everything below is a genuine gap, not an oversight. Each one is named in
 its own `docs/defense.md` / `docs/learning/phase-NN.md` entry with the
 specific reason it wasn't done — read the relevant one before starting.
 
-- **Real GPU work (Phase 7, and the GPU half of Phases 9/10/12):**
-  compile and actually run `csrc/kernels/cuda/*.cu` and
-  `csrc/kernels/triton/rope.py`, profile with Nsight Compute, get real
-  tokens/s and real bandwidth-utilization numbers for `BENCHMARK.md`'s
-  roofline section. The zero-budget plan's answer for this is Kaggle's
-  free T4 GPU notebooks (ADR-009) — if you have access to any NVIDIA GPU,
-  this is the highest-value next step; it unlocks real numbers for
+- **Remaining GPU work (Phase 7, and the GPU half of Phases 9/10/12):**
+  raw CUDA has now compiled and passed small reference tests on a Kaggle
+  P100, but `csrc/kernels/triton/rope.py` still needs a real run. Profile
+  the raw kernels with Nsight Compute and get real tokens/s and
+  bandwidth-utilization numbers for `BENCHMARK.md`'s roofline section.
+  The zero-budget plan's answer remains Kaggle GPU notebooks (ADR-009);
+  these measurements unlock real numbers for
   several other rows in `BENCHMARKS.md` too (real quantization
   speed/accuracy tradeoffs, real speculative-decoding speedup with two
   actually-related models instead of two independently random ones, real

@@ -1,5 +1,5 @@
-// The greedy (argmax) sampling kernel on the GPU. UNVERIFIED IN THIS
-// SESSION -- see docs/learning/phase-07.md. Only greedy argmax is written
+// The greedy (argmax) sampling kernel on the GPU. It passed a small
+// CPU-vs-GPU check on Kaggle's P100 -- see docs/learning/phase-07.md. Only greedy argmax is written
 // as a hand-written CUDA kernel here (the third of the three headline
 // kernels this project commits to writing by hand, per ADR-007); the
 // randomized settings (temperature, top-k, top-p, repetition penalty) use

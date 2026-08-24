@@ -84,8 +84,8 @@ underlying code is too clever and should be simplified first (ADR-010).
   proven exact against the unsharded computation.
 - `csrc/kernels/cuda/*.cu` and `csrc/kernels/triton/rope.py` — hand-written
   CUDA (attention, RMSNorm, greedy-argmax sampling) and Triton (RoPE, both
-  ways for the ADR-007 comparison) kernels. **Written to spec, not
-  compiled or run** -- see the honest-state note below.
+  ways for the ADR-007 comparison) kernels. Raw CUDA compiled and passed
+  four CPU-vs-GPU checks on a Kaggle P100; Triton remains unrun.
 
 ## Honest state, as of this session
 
@@ -97,9 +97,10 @@ C++ model, not a stub). The scheduler is not yet wired to the API for
 genuine concurrent multi-request continuous batching (the API currently
 drives the single-sequence generation loop directly).
 
-**Part II:** this machine has no NVIDIA GPU, so everything under
-`csrc/kernels/` is written but genuinely **unverified** -- not compiled,
-not run, not benchmarked. Everything else in Part II (paged KV cache,
+**Part II:** this machine has no NVIDIA GPU, but the raw CUDA kernels have
+been compiled and run remotely on a Kaggle P100, matching small CPU
+references in four tests. They remain unprofiled and unused by model
+execution, and Triton is still unverified. Everything else in Part II (paged KV cache,
 quantization, speculative decoding, the parity-harness self-test, and
 tensor-parallel sharding math) *is* real, CPU-testable, and tested for
 real, but each has a named gap versus the plan's full GPU-based

@@ -1,5 +1,5 @@
-// RoPE on the GPU, written by hand in raw CUDA. UNVERIFIED IN THIS SESSION
-// -- see docs/learning/phase-07.md. This kernel exists specifically to be
+// RoPE on the GPU, written by hand in raw CUDA. It passed a small CPU-vs-GPU
+// check on Kaggle's P100 -- see docs/learning/phase-07.md. This kernel exists specifically to be
 // benchmarked against csrc/kernels/triton/rope.py (ADR-007's "one kernel,
 // both ways" comparison) -- everything past this one is Triton, not raw
 // CUDA, and this is the evidence for why that split is reasonable rather

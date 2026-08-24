@@ -2,16 +2,18 @@
 
 ## Honest starting point
 
-This phase's code was written on a machine with no NVIDIA GPU at all, so
-none of it has actually been compiled or run on real hardware in this
-session. It's written carefully, to spec, matching the already-tested CPU
-versions line-for-line in intent -- but "compiles and runs correctly on a
-real GPU" is a claim that can only be made once it's actually been run on
-one (the plan's own zero-budget notes already name Kaggle's free T4 GPUs as
-where that happens). Writing it now, honestly labeled, is still worth
-doing: it's real code, ready to be tested the moment GPU time is
-available, and getting the design right on paper first is exactly the
-"derive before implementing" discipline this whole project follows.
+This phase's code was written on a machine with no NVIDIA GPU at all, then
+validated on Kaggle. Revision `dc792e1` compiled with NVCC 12.8 on a Tesla
+P100-PCIE-16GB (sm_60); all four raw-CUDA CPU-vs-GPU checks (RMSNorm,
+greedy argmax, RoPE, and attention) passed, as did the complete 57-test
+CTest suite. That proves this narrow claim: these raw kernels build and
+match their CPU references on small inputs on that hardware.
+
+It does **not** prove they are fast, robust over production shapes, or used
+by the model executor. No Nsight profile or throughput measurement exists,
+and the Triton RoPE implementation remains uncompiled and unrun. The
+P100's older sm_60 architecture also means the result should not be
+generalized to newer T4/A10/A100 hardware without rerunning it there.
 
 ## Why a GPU changes how attention has to be written, even though the math is identical
 

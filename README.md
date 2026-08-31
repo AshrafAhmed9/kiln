@@ -40,8 +40,7 @@ The paged-cache sharing path also has a separate seeded workload:
 ./build/kiln_prefix_cache_benchmark`. It ran 80 synthetic conversations
 with a shared system prompt and four prompt variants, and measured **248
 hits in 252 prefix-block lookups (98.41%)**. This is a local, synthetic
-cache-mechanism measurement -- not a rate from users or playground
-traffic.
+cache-mechanism measurement -- not a rate from real users or real traffic.
 
 **Two rows that need explaining, not hiding:**
 
@@ -104,7 +103,6 @@ flowchart TD
     subgraph py ["Python — decides what happens"]
         API["Web API<br/>(OpenAI-shaped requests)"]
         SCHED["Scheduler<br/>(who gets to run right now)"]
-        CP["Control plane<br/>(API keys, usage limits)"]
     end
 
     subgraph cpp ["C++ — does the actual thinking"]
@@ -113,7 +111,6 @@ flowchart TD
     end
 
     client --> API --> SCHED --> MODEL
-    CP -.->|checks the key, checks the limit| API
     MODEL <--> MEM
 ```
 
@@ -150,11 +147,11 @@ compromise, it's the standard shape of the thing.
   faster model guesses several words ahead; the real model checks all the
   guesses in one pass. Proven — not just claimed — to produce the exact
   same answer as not using the shortcut at all.
-- **Accounts and limits.** Separate users, each with their own key and
-  their own usage limit, that can't interfere with each other.
 - **Checking whether a change made things better or worse.** Infrastructure
   for comparing two versions honestly, using statistics that can tell a
-  real improvement apart from random noise.
+  real improvement apart from random noise — including an LLM-as-judge
+  scorer for open-ended answers and drift detection for a stream of scores
+  drifting away from a baseline.
 
 ## What each piece is actually made of (for anyone reading the code)
 

@@ -221,5 +221,6 @@ deploy/          Dockerfile, docker-compose (engine + Prometheus + Grafana)
 demo.sh          the scripted end-to-end tour
 ```
 
-The full 18-phase plan this project follows lives in
-[`../KILN PLAN.md`](../KILN%20PLAN.md).
+The project's own phase-by-phase record — what was built, why, and what
+it cost — lives in `docs/defense.md`, `docs/correctness.md`, and
+`docs/learning/`.

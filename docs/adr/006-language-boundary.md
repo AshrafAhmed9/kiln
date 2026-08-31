@@ -29,5 +29,4 @@ compute layer — kernels, executor, memory manager — in C++/CUDA." Narrower,
 but sharper and backed by a measured number instead of a shrug.
 
 **Contract:** fixed at Phase 2, never widened casually — widening the
-Python↔C++ interface requires a new ADR. Full detail in `KILN PLAN.md`
-constitution §6.
+Python↔C++ interface requires a new ADR.

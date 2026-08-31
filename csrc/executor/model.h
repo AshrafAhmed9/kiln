@@ -69,6 +69,24 @@ class Model {
                           const int64_t* start_positions,
                           KVCache* const* caches, float* out_logits) const;
 
+  // Prefills several sequences of *different* lengths in one call, with no
+  // padding at all -- this is what Phase 23's note calls "ragged prefill":
+  // `tokens` is every sequence's real tokens concatenated back-to-back
+  // (no filler), `seq_lengths` gives each sequence's real length, and
+  // `caches` gives each sequence's own (already-existing, possibly
+  // non-empty for a continued prefill) KV cache. Every matmul in every
+  // layer runs once over the whole concatenated batch -- exactly the
+  // total real work, never padding's wasted rows -- and only attention
+  // treats each sequence as its own separate lane, by calling the same
+  // tested Attention() function once per sequence on its own slice, the
+  // same pattern the padded Forward() path above already uses.
+  // out_logits is [total_tokens, vocab_size], where total_tokens is the
+  // sum of seq_lengths -- the caller picks out whichever row(s) it wants
+  // (usually just the last row of each sequence).
+  void ForwardPrefillBatch(const int32_t* tokens, int64_t num_sequences,
+                           const int64_t* seq_lengths,
+                           KVCache* const* caches, float* out_logits) const;
+
   const ModelConfig& config() const { return config_; }
 
   // Folds a trained LoRA adapter into one weight matrix of one layer, in

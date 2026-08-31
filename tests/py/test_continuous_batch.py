@@ -61,3 +61,33 @@ def test_existing_sequences_share_one_cached_decode_call():
     # produced for each sequence.
     assert third_tokens[0] == int(first_reference.argmax())
     assert third_tokens[1] == int(second_reference.argmax())
+
+
+def test_three_different_length_fresh_prompts_prefill_in_one_ragged_call():
+    # Three fresh requests, three different prompt lengths, submitted in one
+    # executor call -- reaches Model.forward_prefill_batch with no padding.
+    # Each one's first sampled token must still match what prefilling it
+    # alone would have produced.
+    model = toy_model()
+    executor = ContinuousBatchExecutor(model)
+    first = Request(1, [1], 2)
+    second = Request(2, [2, 3, 4], 2)
+    third = Request(3, [5, 6], 2)
+    for request in (first, second, third):
+        executor.register(request, sampler_config(), seed=request.request_id)
+
+    tokens = executor([first, second, third])
+
+    reference_first = model.forward(
+        np.asarray([1], dtype=np.int32), 1, 1, None, 0, _C.KVCache(2, 32, 1, 4)
+    )[-1]
+    reference_second = model.forward(
+        np.asarray([2, 3, 4], dtype=np.int32), 1, 3, None, 0, _C.KVCache(2, 32, 1, 4)
+    )[-1]
+    reference_third = model.forward(
+        np.asarray([5, 6], dtype=np.int32), 1, 2, None, 0, _C.KVCache(2, 32, 1, 4)
+    )[-1]
+
+    assert tokens[0] == int(reference_first.argmax())
+    assert tokens[1] == int(reference_second.argmax())
+    assert tokens[2] == int(reference_third.argmax())

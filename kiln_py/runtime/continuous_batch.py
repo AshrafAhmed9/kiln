@@ -2,9 +2,9 @@
 
 The scheduler chooses which requests advance. This adapter owns the per-request
 KV caches and turns one scheduler step into one C++ batched-decode call for all
-already-prefilled requests. New prompts are still prefetched individually: they
-have different lengths, and this small CPU implementation has no ragged
-prefill interface yet.
+already-prefilled requests. New prompts of different lengths are prefilled
+together too, in one ragged (unpadded) batched call -- see
+Model::ForwardPrefillBatch and docs/learning/phase-25.md.
 """
 from __future__ import annotations
 
@@ -52,12 +52,22 @@ class ContinuousBatchExecutor:
     def __call__(self, requests: list[Request]) -> list[int]:
         fresh = [request for request in requests if not self._states[request.request_id].logits.size]
         fresh_ids = {request.request_id for request in fresh}
-        for request in fresh:
-            state = self._states[request.request_id]
-            prompt = np.asarray(request.prompt_tokens, dtype=np.int32)
-            state.logits = self._model.forward(
-                prompt, 1, len(prompt), None, 0, state.cache
-            )[-1]
+        if fresh:
+            # One ragged batched call for every new prompt this step, instead
+            # of one Model::Forward call per prompt -- no padding, and every
+            # matmul in every layer runs once over the true total token count.
+            concatenated = np.concatenate(
+                [np.asarray(request.prompt_tokens, dtype=np.int32) for request in fresh]
+            )
+            seq_lengths = [len(request.prompt_tokens) for request in fresh]
+            fresh_states = [self._states[request.request_id] for request in fresh]
+            logits = self._model.forward_prefill_batch(
+                concatenated, seq_lengths, [state.cache for state in fresh_states]
+            )
+            row = 0
+            for state, length in zip(fresh_states, seq_lengths):
+                state.logits = logits[row + length - 1]
+                row += length
 
         chosen = []
         decode_requests = []

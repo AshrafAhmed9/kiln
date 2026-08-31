@@ -316,6 +316,113 @@ void Model::ForwardDecodeBatch(const int32_t* tokens, int64_t batch_size,
          config_.vocab_size);
 }
 
+void Model::ForwardPrefillBatch(const int32_t* tokens, int64_t num_sequences,
+                                const int64_t* seq_lengths,
+                                KVCache* const* caches,
+                                float* out_logits) const {
+  if (num_sequences <= 0) return;
+  for (int64_t b = 0; b < num_sequences; ++b) {
+    if (caches[b] == nullptr) {
+      throw std::invalid_argument(
+          "Model::ForwardPrefillBatch requires one KV cache per sequence");
+    }
+  }
+
+  // Where sequence b's tokens start within the concatenated `tokens`
+  // array -- the ragged equivalent of "b * seq_len" in the padded path.
+  std::vector<int64_t> offsets(num_sequences);
+  int64_t total_tokens = 0;
+  for (int64_t b = 0; b < num_sequences; ++b) {
+    offsets[b] = total_tokens;
+    total_tokens += seq_lengths[b];
+  }
+
+  int64_t d = config_.hidden_size;
+  int64_t q_dim = config_.n_heads * config_.head_dim;
+  int64_t kv_dim = config_.n_kv_heads * config_.head_dim;
+  int64_t n_rows = total_tokens;
+
+  std::vector<float> x(n_rows * d);
+  for (int64_t r = 0; r < n_rows; ++r) {
+    int32_t token = tokens[r];
+    std::memcpy(x.data() + r * d, tok_embeddings.data() + token * d,
+                d * sizeof(float));
+  }
+
+  // Each sequence's tokens are positioned relative to whatever's already
+  // in its own cache (0 for a fresh prefill, or partway through for a
+  // prefill that's continuing an existing sequence) -- not relative to
+  // this batch's own row index, which is what makes this genuinely
+  // "ragged" rather than just "unpadded but otherwise like Forward()."
+  std::vector<int64_t> positions(n_rows);
+  for (int64_t b = 0; b < num_sequences; ++b) {
+    int64_t start_pos = caches[b]->length();
+    for (int64_t i = 0; i < seq_lengths[b]; ++i) {
+      positions[offsets[b] + i] = start_pos + i;
+    }
+  }
+
+  std::vector<float> normed(n_rows * d);
+  std::vector<float> q(n_rows * q_dim);
+  std::vector<float> k(n_rows * kv_dim);
+  std::vector<float> v(n_rows * kv_dim);
+  std::vector<float> attn_out(n_rows * q_dim);
+  std::vector<float> proj(n_rows * d);
+  std::vector<float> mlp_out(n_rows * d);
+
+  for (int64_t layer_idx = 0; layer_idx < config_.n_layers; ++layer_idx) {
+    const LayerWeights& layer = layers[layer_idx];
+
+    // Every matmul below runs once over all n_rows -- the entire point of
+    // ragged batching: total_tokens is exactly the real work, with none of
+    // a padded batch's wasted rows.
+    RmsNorm(x.data(), layer.attn_norm.data(), normed.data(), n_rows, d,
+            config_.rms_eps);
+    GemmBT(normed.data(), layer.wq.data(), q.data(), n_rows, d, q_dim);
+    GemmBT(normed.data(), layer.wk.data(), k.data(), n_rows, d, kv_dim);
+    GemmBT(normed.data(), layer.wv.data(), v.data(), n_rows, d, kv_dim);
+    ApplyRope(q.data(), positions.data(), n_rows, config_.n_heads,
+              config_.head_dim, config_.rope_theta);
+    ApplyRope(k.data(), positions.data(), n_rows, config_.n_kv_heads,
+              config_.head_dim, config_.rope_theta);
+
+    // Attention is the one step that can't be one big matmul across
+    // sequences -- a token must never attend into a different sequence's
+    // tokens. So this loops per sequence, on its own slice of q/k/v,
+    // calling the exact same Attention() function the single-sequence and
+    // padded-batch paths above already use and already have parity tests
+    // for -- no new attention code to get wrong here.
+    for (int64_t b = 0; b < num_sequences; ++b) {
+      int64_t offset = offsets[b];
+      int64_t len = seq_lengths[b];
+      caches[b]->Append(layer_idx, k.data() + offset * kv_dim,
+                        v.data() + offset * kv_dim, len);
+      int64_t kv_len = caches[b]->length() + len;
+      Attention(q.data() + offset * q_dim, caches[b]->K(layer_idx),
+                caches[b]->V(layer_idx), attn_out.data() + offset * q_dim,
+                len, kv_len, config_.n_heads, config_.n_kv_heads,
+                config_.head_dim, caches[b]->length());
+    }
+
+    GemmBT(attn_out.data(), layer.wo.data(), proj.data(), n_rows, q_dim, d);
+    for (int64_t i = 0; i < n_rows * d; ++i) x[i] += proj[i];
+    RmsNorm(x.data(), layer.ffn_norm.data(), normed.data(), n_rows, d,
+            config_.rms_eps);
+    SwiGlu(normed.data(), layer.w_gate.data(), layer.w_up.data(),
+           layer.w_down.data(), mlp_out.data(), n_rows, d, config_.ffn_hidden);
+    for (int64_t i = 0; i < n_rows * d; ++i) x[i] += mlp_out[i];
+  }
+
+  for (int64_t b = 0; b < num_sequences; ++b) {
+    caches[b]->Advance(seq_lengths[b]);
+  }
+
+  RmsNorm(x.data(), final_norm.data(), normed.data(), n_rows, d,
+          config_.rms_eps);
+  GemmBT(normed.data(), lm_head.data(), out_logits, n_rows, d,
+         config_.vocab_size);
+}
+
 void Model::MergeLoraIntoLayer(int64_t layer_idx, const std::string& which,
                                const float* lora_a, const float* lora_b,
                                int64_t rank, float scale) {

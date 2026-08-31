@@ -190,5 +190,124 @@ TEST(Model, BatchedForwardMatchesRunningEachSequenceAlone) {
   }
 }
 
+// Phase 24's ragged prefill batches several different-length prompts in
+// one call with no padding at all. The claim to check: each sequence gets
+// exactly the answer it would have gotten prefilled alone, and its cache
+// ends up in exactly the state a solo Forward() call would have left it
+// in -- batching the matmuls together must not leak one sequence's tokens
+// into another's attention or change anyone's numbers.
+TEST(Model, RaggedPrefillMatchesRunningEachSequenceAlone) {
+  ModelConfig config = TinyConfig();
+  Model model = Model::LoadRandom(config, /*seed=*/7);
+
+  int32_t first_prompt[] = {1, 2, 3};
+  int32_t second_prompt[] = {4, 5};
+  int32_t third_prompt[] = {6, 7, 8, 9};
+  int32_t concatenated[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  int64_t seq_lengths[] = {3, 2, 4};
+
+  KVCache first_cache(config.n_layers, config.max_seq_len, config.n_kv_heads,
+                      config.head_dim);
+  KVCache second_cache(config.n_layers, config.max_seq_len, config.n_kv_heads,
+                       config.head_dim);
+  KVCache third_cache(config.n_layers, config.max_seq_len, config.n_kv_heads,
+                      config.head_dim);
+  KVCache* caches[] = {&first_cache, &second_cache, &third_cache};
+
+  std::vector<float> batched_logits(9 * config.vocab_size);
+  model.ForwardPrefillBatch(concatenated, 3, seq_lengths, caches,
+                            batched_logits.data());
+
+  KVCache first_reference(config.n_layers, config.max_seq_len,
+                          config.n_kv_heads, config.head_dim);
+  KVCache second_reference(config.n_layers, config.max_seq_len,
+                           config.n_kv_heads, config.head_dim);
+  KVCache third_reference(config.n_layers, config.max_seq_len,
+                          config.n_kv_heads, config.head_dim);
+  std::vector<float> first_logits(3 * config.vocab_size);
+  std::vector<float> second_logits(2 * config.vocab_size);
+  std::vector<float> third_logits(4 * config.vocab_size);
+  model.Forward(first_prompt, 1, 3, nullptr, 0, &first_reference,
+                first_logits.data());
+  model.Forward(second_prompt, 1, 2, nullptr, 0, &second_reference,
+                second_logits.data());
+  model.Forward(third_prompt, 1, 4, nullptr, 0, &third_reference,
+                third_logits.data());
+
+  auto expect_block_matches = [&](int64_t offset, int64_t len,
+                                  const std::vector<float>& reference) {
+    for (int64_t row = 0; row < len; ++row) {
+      for (int64_t i = 0; i < config.vocab_size; ++i) {
+        EXPECT_NEAR(batched_logits[(offset + row) * config.vocab_size + i],
+                    reference[row * config.vocab_size + i], 1e-3f);
+      }
+    }
+  };
+  expect_block_matches(0, 3, first_logits);
+  expect_block_matches(3, 2, second_logits);
+  expect_block_matches(5, 4, third_logits);
+
+  EXPECT_EQ(first_cache.length(), first_reference.length());
+  EXPECT_EQ(second_cache.length(), second_reference.length());
+  EXPECT_EQ(third_cache.length(), third_reference.length());
+}
+
+// A second ragged-prefill call on the same caches must continue from
+// wherever each sequence's cache already was, not from position 0 -- this
+// is what makes ForwardPrefillBatch usable for chunked prefill (Phase 19)
+// rather than only for a batch's very first call.
+TEST(Model, RaggedPrefillContinuesFromExistingCacheLength) {
+  ModelConfig config = TinyConfig();
+  Model model = Model::LoadRandom(config, /*seed=*/11);
+
+  int32_t warm_first[] = {1, 2};
+  int32_t warm_second[] = {3};
+  KVCache first_cache(config.n_layers, config.max_seq_len, config.n_kv_heads,
+                      config.head_dim);
+  KVCache second_cache(config.n_layers, config.max_seq_len, config.n_kv_heads,
+                       config.head_dim);
+  int64_t warm_lengths[] = {2, 1};
+  int32_t warm_concat[] = {1, 2, 3};
+  std::vector<float> warm_logits(3 * config.vocab_size);
+  KVCache* caches[] = {&first_cache, &second_cache};
+  model.ForwardPrefillBatch(warm_concat, 2, warm_lengths, caches,
+                            warm_logits.data());
+
+  int32_t continue_first[] = {8};
+  int32_t continue_second[] = {9, 10};
+  int32_t continue_concat[] = {8, 9, 10};
+  int64_t continue_lengths[] = {1, 2};
+  std::vector<float> continued_logits(3 * config.vocab_size);
+  model.ForwardPrefillBatch(continue_concat, 2, continue_lengths, caches,
+                            continued_logits.data());
+
+  KVCache reference_first(config.n_layers, config.max_seq_len,
+                          config.n_kv_heads, config.head_dim);
+  KVCache reference_second(config.n_layers, config.max_seq_len,
+                           config.n_kv_heads, config.head_dim);
+  std::vector<float> ignored(2 * config.vocab_size);
+  model.Forward(warm_first, 1, 2, nullptr, 0, &reference_first,
+                ignored.data());
+  model.Forward(warm_second, 1, 1, nullptr, 0, &reference_second,
+                ignored.data());
+  std::vector<float> reference_first_logits(1 * config.vocab_size);
+  std::vector<float> reference_second_logits(2 * config.vocab_size);
+  model.Forward(continue_first, 1, 1, nullptr, 2, &reference_first,
+                reference_first_logits.data());
+  model.Forward(continue_second, 1, 2, nullptr, 1, &reference_second,
+                reference_second_logits.data());
+
+  for (int64_t i = 0; i < config.vocab_size; ++i) {
+    EXPECT_NEAR(continued_logits[i], reference_first_logits[i], 1e-3f);
+  }
+  for (int64_t row = 0; row < 2; ++row) {
+    for (int64_t i = 0; i < config.vocab_size; ++i) {
+      EXPECT_NEAR(continued_logits[(1 + row) * config.vocab_size + i],
+                  reference_second_logits[row * config.vocab_size + i],
+                  1e-3f);
+    }
+  }
+}
+
 }  // namespace
 }  // namespace kiln

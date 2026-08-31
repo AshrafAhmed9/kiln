@@ -543,3 +543,29 @@ cancels its scheduler request if the client disconnects. Prompts still prefill
 one at a time because the executor has no ragged prefill interface. The
 contiguous per-sequence cache also means this path has not yet inherited Phase
 8's paged prefix sharing.
+
+## Phase 25 — Ragged prefill batching
+
+**What:** `Model::ForwardPrefillBatch` prefills several different-length
+prompts in one call with no padding: every sequence's real tokens are
+concatenated back-to-back, and every matmul in every layer runs once over the
+true total token count, never a padded rectangle's wasted rows. Only
+attention treats sequences separately, by calling the same tested
+`Attention()` function once per sequence on its own slice. Wired into
+`kiln_py/runtime/continuous_batch.py`, so a scheduler step with several new
+requests now prefills all of them in one call instead of looping
+`model.forward()` once per prompt.
+
+**Why it works:** see docs/learning/phase-25.md -- every step except
+attention treats a token as just a row in a matrix with no notion of which
+sequence it belongs to, so those steps batch for free; attention is the one
+place sequence identity actually matters, and reusing the exact tested
+per-sequence attention function on the right slice means no new numerical
+code had to be written or verified.
+
+**What it cost:** two new tests compared the ragged batched call directly
+against running each sequence alone and passed without a single fix, which is
+the direct payoff of not writing a new attention kernel. No throughput
+benchmark exists yet for padded-vs-ragged (the claim is correctness and real
+API wiring, not a measured speedup), and each sequence still uses its own
+contiguous `KVCache` -- Phase 8's paged prefix sharing isn't part of this path.

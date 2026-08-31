@@ -1,5 +1,5 @@
 """Tests for drift detection (Phase 24). There is no real production
-traffic to monitor (see HANDOFF.md), so every score stream here is a
+traffic to monitor, so every score stream here is a
 synthetic, seeded numpy draw -- labeled honestly as synthetic, same as
 Phase 21's prefix-cache workload. What's being verified is the statistics
 themselves: that a genuine shift is flagged and a same-distribution

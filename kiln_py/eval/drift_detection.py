@@ -2,7 +2,7 @@
 recent batch, decide whether the recent scores actually come from a
 different distribution or whether the difference is just sampling noise.
 
-There is no live production traffic to monitor here (see HANDOFF.md) --
+There is no live production traffic to monitor here --
 this module is exercised with a synthetic, seeded stream of scores in its
 tests, labeled honestly as synthetic. What's real is the statistics: the
 same paired-bootstrap idea Phase 13's regression gate already uses, plus

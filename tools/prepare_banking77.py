@@ -54,7 +54,15 @@ def main() -> None:
 
     from datasets import load_dataset
 
-    dataset = load_dataset(DATASET_ID)
+    # PolyAI/banking77 ships a legacy loading script on the Hub; recent
+    # `datasets` versions refuse to execute those at all (a real, current
+    # security policy change, not a version this project can just pin
+    # around). Hugging Face auto-converts script-based datasets to a
+    # Parquet mirror at this fixed revision, which loads the identical
+    # data with no script involved -- found only by actually running this
+    # tool against the real dataset for the first time; see
+    # docs/correctness.md.
+    dataset = load_dataset(DATASET_ID, revision="refs/convert/parquet")
     intent_names = list(dataset["train"].features["label"].names)
     train = records_from_split(dataset["train"], intent_names,
                                args.train_examples, args.seed)

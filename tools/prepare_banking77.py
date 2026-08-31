@@ -7,14 +7,42 @@ preserving a manifest so a later adapter result is reproducible.
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 import random
+import urllib.request
 from pathlib import Path
-from typing import Any
 
 
 DATASET_ID = "PolyAI/banking77"
 DATASET_LICENSE = "CC-BY-4.0"
+
+# PolyAI/banking77 on the Hugging Face Hub ships only a legacy loading
+# script (banking77.py) -- no Parquet mirror exists for it (checked via
+# the Hub's /refs API: an empty "converts" list), and current `datasets`
+# versions refuse to execute any loading script at all, as a security
+# policy, not a version this project can pin around. The script itself
+# does nothing but download these same two CSV files from PolyAI's
+# original GitHub repo and parse them with the standard library `csv`
+# module -- so fetching them directly, the same way the script already
+# does internally, is the real fix, not a workaround: identical data,
+# identical CC-BY-4.0 license, one fewer moving dependency. Found only by
+# actually running this tool against the real dataset; see
+# docs/correctness.md.
+_TRAIN_URL = ("https://raw.githubusercontent.com/PolyAI-LDN/"
+             "task-specific-datasets/master/banking_data/train.csv")
+_TEST_URL = ("https://raw.githubusercontent.com/PolyAI-LDN/"
+            "task-specific-datasets/master/banking_data/test.csv")
+
+
+def fetch_csv_rows(url: str) -> list[tuple[str, str]]:
+    with urllib.request.urlopen(url) as response:
+        text = response.read().decode("utf-8")
+    reader = csv.reader(io.StringIO(text), quotechar='"', delimiter=",",
+                        quoting=csv.QUOTE_ALL, skipinitialspace=True)
+    next(reader)  # header row
+    return [(row[0], row[1]) for row in reader]
 
 
 def make_record(utterance: str, intent: str) -> dict[str, str]:
@@ -31,15 +59,11 @@ def write_jsonl(path: Path, records: list[dict[str, str]]) -> None:
                     encoding="utf-8")
 
 
-def records_from_split(split: Any, intent_names: list[str], limit: int,
-                       seed: int) -> list[dict[str, str]]:
-    indices = list(range(len(split)))
+def records_from_rows(rows: list[tuple[str, str]], limit: int,
+                      seed: int) -> list[dict[str, str]]:
+    indices = list(range(len(rows)))
     random.Random(seed).shuffle(indices)
-    records = []
-    for index in indices[:limit]:
-        row = split[index]
-        records.append(make_record(row["text"], intent_names[row["label"]]))
-    return records
+    return [make_record(rows[index][0], rows[index][1]) for index in indices[:limit]]
 
 
 def main() -> None:
@@ -52,22 +76,10 @@ def main() -> None:
     if args.train_examples <= 0 or args.validation_examples <= 0:
         raise ValueError("example counts must be positive")
 
-    from datasets import load_dataset
-
-    # PolyAI/banking77 ships a legacy loading script on the Hub; recent
-    # `datasets` versions refuse to execute those at all (a real, current
-    # security policy change, not a version this project can just pin
-    # around). Hugging Face auto-converts script-based datasets to a
-    # Parquet mirror at this fixed revision, which loads the identical
-    # data with no script involved -- found only by actually running this
-    # tool against the real dataset for the first time; see
-    # docs/correctness.md.
-    dataset = load_dataset(DATASET_ID, revision="refs/convert/parquet")
-    intent_names = list(dataset["train"].features["label"].names)
-    train = records_from_split(dataset["train"], intent_names,
-                               args.train_examples, args.seed)
-    validation = records_from_split(dataset["test"], intent_names,
-                                    args.validation_examples, args.seed + 1)
+    train_rows = fetch_csv_rows(_TRAIN_URL)
+    test_rows = fetch_csv_rows(_TEST_URL)
+    train = records_from_rows(train_rows, args.train_examples, args.seed)
+    validation = records_from_rows(test_rows, args.validation_examples, args.seed + 1)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     write_jsonl(args.output_dir / "train.jsonl", train)
     write_jsonl(args.output_dir / "validation.jsonl", validation)

@@ -174,8 +174,9 @@ plain-language tour; `docs/defense.md` explains, phase by phase, what was
 built and exactly what it cost; `docs/correctness.md` is a running list
 of real bugs this project found in itself (and how); `BENCHMARKS.md` has
 the itemized, nothing-hidden list of what's actually been measured versus
-what's honestly still missing. Nothing here claims more than what was
-actually run and checked.
+what's honestly still missing; `docs/interview-prep.md` has the prepared
+answers to the specific questions this project invites. Nothing here
+claims more than what was actually run and checked.
 
 One CPU-only reference check now exists: with
 `HuggingFaceTB/SmolLM2-135M-Instruct`, the prompt `Kiln checks its own

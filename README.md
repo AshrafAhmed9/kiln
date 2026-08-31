@@ -33,7 +33,7 @@ rigorous.
 | + continuous batching | wall-clock time, mixed-length workload (6 requests) | **1.42×** faster than static batching |
 | + paged KV cache | max concurrent sequences at fixed memory | contiguous **4** → paged **21** → paged+shared-prefix **62** |
 | + INT8 quantization | memory footprint · reconstruction error | **3.76×** smaller · MSE **3.5×10⁻⁵** (CPU speed *not* faster — no INT8 kernel; see below) |
-| + speculative decoding | target-model calls per token | **1.0×** (no reduction) — both models are independently untrained, so the draft's guesses essentially never match the target's; see below |
+| + speculative decoding | target-model calls per token | **1.0×** call reduction here (see below) · **exact**: seeded output token-for-token identical to greedy decoding, proven by the rejection-sampling construction, not measured by luck |
 
 The paged-cache sharing path also has a separate seeded workload:
 `cmake --build build --target kiln_prefix_cache_benchmark &&
@@ -52,15 +52,20 @@ cache-mechanism measurement -- not a rate from real users or real traffic.
   Reporting a CPU number as if it
   demonstrated the GPU win would be the fabrication this project
   specifically refuses to do.
-- **Speculative decoding shows a 1.0× (zero) reduction here, and that's
-  the correct, honest result for this setup.** Its entire payoff depends
-  on the draft model's guesses actually landing — and two independently,
-  randomly-initialized models have essentially no reason to agree (about
-  a 1-in-1000 chance per token, at this toy vocabulary size). The
-  mechanism is proven correct elsewhere (see the speculative-decoding
-  section below: exact, token-for-token, against greedy decoding) — this
-  row is a measurement of *this session's* draft/target pairing, not a
-  claim that speculative decoding doesn't work.
+- **Speculative decoding's call-reduction number is 1.0× (zero) here, and
+  that's the correct, honest result for this specific draft/target
+  pairing — not a claim that the mechanism doesn't work.** Its speed
+  payoff depends entirely on the draft model's guesses actually landing,
+  and two independently, randomly-initialized models have essentially no
+  reason to agree (about a 1-in-1000 chance per token, at this toy
+  vocabulary size). What *is* proven, independent of which models are
+  paired: the rejection-sampling acceptance rule makes the output
+  distribution exact by construction, and the test checks this directly —
+  seeded speculative decoding produces token-for-token identical output to
+  seeded greedy decoding, every time. The two claims are separate on
+  purpose: "does it change your answer" (no, proven) and "does it make
+  this particular pairing faster" (not with two random models, and that's
+  expected, not a bug).
 
 See `BENCHMARKS.md` for the full per-phase history and `BENCHMARK.md` for
 the roofline / arithmetic-intensity analysis of why decode and prefill
@@ -110,8 +115,17 @@ flowchart TD
         MEM["Memory<br/>(remembers the conversation so far)"]
     end
 
+    subgraph verify ["Verification — checks the other two boxes, not itself the request path"]
+        PARITY["Parity harness<br/>(logits vs. a real HF reference)"]
+        REGRESS["Regression gate<br/>(bootstrap CI on paired scores)"]
+        JUDGE["LLM-as-judge + drift detection<br/>(open-ended scoring, shift-over-time)"]
+    end
+
     client --> API --> SCHED --> MODEL
     MODEL <--> MEM
+    MODEL -.->|checked against| PARITY
+    PARITY -.-> REGRESS
+    REGRESS -.-> JUDGE
 ```
 
 **Why split it this way?** Deciding *who gets to talk to the model next*
@@ -121,6 +135,13 @@ question. Keeping those two concerns in two different languages, talking
 through one narrow, well-defined bridge, is exactly how real production
 engines (the ones this project is modeled on) are built — it's not a
 compromise, it's the standard shape of the thing.
+
+The verification plane sits outside that request path on purpose: it
+never runs on the hot path, and it's what turns every claim in the delta
+table below from "trust me" into "here's the diff." The parity harness
+checks the C++ compute layer against a real Hugging Face reference; the
+regression gate and drift detector check whether a *change* to either
+side made things measurably better, worse, or just noisier.
 
 ## The big picture (what each piece is for)
 

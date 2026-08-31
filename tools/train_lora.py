@@ -15,6 +15,8 @@ import torch
 from peft import LoraConfig, TaskType, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from _torch_device import usable_device
+
 
 def load_texts(path: Path) -> list[str]:
     texts = [json.loads(line)["text"] for line in path.read_text().splitlines() if line]
@@ -32,7 +34,7 @@ def train(model_name: str, data_path: Path, output: Path, steps: int,
         task_type=TaskType.CAUSAL_LM, r=rank, lora_alpha=rank,
         target_modules=["q_proj"], lora_dropout=0.0, bias="none",
     ))
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = usable_device()
     model.to(device).train()
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     texts = load_texts(data_path)

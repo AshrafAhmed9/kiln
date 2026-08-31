@@ -10,6 +10,8 @@ import torch
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from _torch_device import usable_device
+
 
 def load_records(path: Path, limit: int) -> list[dict[str, str]]:
     records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
@@ -53,7 +55,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-examples", type=int, default=512)
     args = parser.parse_args()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = usable_device()
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token

@@ -21,14 +21,13 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 
 from kiln_py.metrics import (
     completion_latency_seconds,
     completions_total,
-    local_session_snapshot,
     tokens_generated_total,
 )
 
@@ -161,30 +160,3 @@ def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-_PLAYGROUND_HTML = (Path(__file__).parent / "playground.html").read_text()
-_STATUS_HTML = (Path(__file__).parent / "status.html").read_text()
-
-
-@app.get("/", response_class=HTMLResponse)
-def playground():
-    """Serves the static playground page (Phase 17) from the same app
-    instance that answers /v1/completions, so the page's fetch() calls
-    are same-origin and need no CORS configuration at all.
-    """
-    return _PLAYGROUND_HTML
-
-
-@app.get("/status", response_class=HTMLResponse)
-def status_page():
-    """Shows the counters accumulated by this local server process only.
-
-    This is intentionally separate from the playground: the page is useful for
-    checking a demo session, but its values reset on restart and are not a
-    production dashboard.
-    """
-    return _STATUS_HTML
-
-
-@app.get("/status/data")
-def status_data():
-    return local_session_snapshot()

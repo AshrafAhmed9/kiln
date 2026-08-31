@@ -75,10 +75,9 @@ it's already read, serve several people at once fairly, and answer over
 a normal web API that other tools (like the `openai` Python package)
 already know how to talk to. On top of that: a memory system that shares
 identical prompts between conversations instead of storing them twice; a
-way to shrink the model's numbers down for less memory use; a proven
+way to shrink the model's numbers down for less memory use; and a proven
 (not just claimed) trick for generating text faster using a second,
-smaller model as a scout; API keys and usage limits for multiple
-separate users; and a small web page to try all of it.
+smaller model as a scout.
 
 **What doesn't work yet, and why, in one line each:** the raw CUDA kernels
 now compile and pass small CPU-vs-GPU correctness tests on Kaggle P100 and
@@ -170,7 +169,6 @@ compromise, it's the standard shape of the thing.
 | Deciding who runs next | `kiln_py/scheduler/` | a waiting line and a running list, moving people between them as room opens up |
 | The faster generation trick | `kiln_py/runtime/speculative_decode.py` | a small model guesses, a big model checks all the guesses in one go |
 | The web API | `kiln_py/api/` | matches the shape of OpenAI's own API, so existing tools work against it unmodified |
-| Accounts and limits | `kiln_py/control_plane/` | keys that are never stored in a readable form, and limits checked *before* letting a request run |
 
 ## Honest status
 
@@ -190,9 +188,10 @@ Kiln. The measured final-logit difference was **7.44×10⁻⁵ max absolute** an
 complete parity proof. Run it after `pip install -e '.[oracle]'` with
 `PYTHONPATH=. python tools/hf_parity.py --model-dir PATH`.
 
-As of this writing: the checked-in suites include **51 C++ tests**
-(including memory-safety tooling) and the Python API/control-plane tests.
-The whole thing has also been built and run inside a real Docker container.
+As of this writing: the checked-in suites include the C++ tests (including
+memory-safety tooling, and 61/61 on a real Kaggle GPU with `KILN_BUILD_CUDA`
+on) and the Python API tests. The whole thing has also been built and run
+inside a real Docker container.
 
 ## Try it
 
@@ -205,12 +204,11 @@ PYTHONPATH=. python3 -m pytest tests/py                     # the Python side
 bash demo.sh                                                # the full five-minute tour
 ```
 
-Then open `http://localhost:8420/` for the playground and
-`http://localhost:8420/status` for this local process's counters, or read
-`docs/writeups/` for three longer explanations of the most interesting
-parts (the shared-memory conversation cache, the "how do we know it's
-still right" testing philosophy, and what shrinking a model actually
-costs).
+Then `curl http://localhost:8420/v1/completions -d '{"prompt": "hi", "max_tokens": 8}'`
+against the running API, or read `docs/writeups/` for three longer
+explanations of the most interesting parts (the shared-memory conversation
+cache, the "how do we know it's still right" testing philosophy, and what
+shrinking a model actually costs).
 
 ## Where things live
 

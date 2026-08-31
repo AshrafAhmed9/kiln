@@ -16,7 +16,6 @@ import time
 import numpy as np
 
 from kiln_py import _C
-from kiln_py.control_plane.tenant_store import Tenant
 from kiln_py.runtime.speculative_decode import speculative_generate
 
 

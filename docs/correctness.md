@@ -138,3 +138,36 @@ as equivalent to "the tools built from those packages are available,"
 when `pip install` actually produces two separate things in two separate
 places — and a multi-stage Docker build that copies files explicitly, by
 path, will only include exactly what's named, not "everything pip did."
+
+## Phase 7 (re-verification) — a version pin broke a previously-working CUDA build
+
+**What broke:** re-running the CUDA build on a fresh Kaggle GPU session
+failed at `cmake` configure with `Could not find a configuration file for
+package "nlohmann_json" that is compatible with requested version "3.11"`.
+Ubuntu 22.04's `nlohmann-json3-dev` apt package ships 3.10.5; `CMakeLists.txt`
+required 3.11.
+
+**How it was caught:** actually running the CUDA parity suite again from a
+clean clone via a scripted Kaggle kernel, rather than assuming a previously
+successful GPU run (revision `dc792e1` and later) meant the build still
+worked on a brand new session with a brand new apt cache.
+
+**The fix:** lowered `find_package(nlohmann_json 3.11 REQUIRED)` to `3.10`.
+No 3.11-only feature is used anywhere in this codebase, so this is a real
+compatibility fix, not a version-pin workaround.
+
+**What I misunderstood — or rather, what the project as a whole
+under-verified:** a build succeeding once, on one session, with one apt
+cache, isn't the same claim as "the build works from a clean checkout" —
+the same class of mistake as the Phase 18 Docker bugs above (macOS
+working "by coincidence" while Linux failed), just one layer further out:
+this time it was the *toolchain's own dependency resolution*, not the
+compiled code, that silently depended on whatever happened to already be
+installed. After the fix: 61/61 CTest checks passed on a real Kaggle
+P100 (compute capability 6.0, detected and passed to `CUDA_ARCHITECTURES`
+at build time rather than assumed), and the RoPE kernel measured
+**216.5 GB/s effective bandwidth** (512 tokens, 9 heads, head_dim 64,
+median of 1000 iterations). Nsight Compute profiling was attempted in the
+same run and failed with `ERR_NVGPUCTRPERM` — Kaggle's container does not
+grant GPU performance-counter access — a real, named platform limitation,
+not a build bug.

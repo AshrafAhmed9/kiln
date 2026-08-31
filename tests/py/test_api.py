@@ -21,16 +21,6 @@ def test_healthz():
     assert response.json()["status"] == "ok"
 
 
-def test_playground_page_is_served_and_points_at_the_real_api():
-    response = client.get("/")
-    assert response.status_code == 200
-    assert "text/html" in response.headers["content-type"]
-    # It has to actually call the real endpoint, not a mocked one -- this
-    # is a cheap, real check that the page wasn't quietly pointed
-    # somewhere else during editing.
-    assert "/v1/completions" in response.text
-
-
 def test_metrics_endpoint_reflects_a_real_completion():
     before = client.get("/metrics").text
     client.post("/v1/completions", json={"prompt": "metrics test", "max_tokens": 2})
@@ -49,19 +39,6 @@ def test_metrics_endpoint_reflects_a_real_completion():
         before, "kiln_completions_total")
 
 
-def test_local_status_page_reads_the_same_process_metrics():
-    before = client.get("/status/data").json()
-    client.post("/v1/completions", json={"prompt": "status test", "max_tokens": 3})
-    after = client.get("/status/data").json()
-    page = client.get("/status")
-
-    assert after["completions_total"] == before["completions_total"] + 1
-    assert after["tokens_generated_total"] == before["tokens_generated_total"] + 3
-    assert after["completion_latency_count"] == before["completion_latency_count"] + 1
-    assert page.status_code == 200
-    assert "Local session status" in page.text
-    assert "not production traffic" in page.text
-    assert 'fetch("/status/data")' in page.text
 
 
 def test_completion_returns_openai_shaped_response():

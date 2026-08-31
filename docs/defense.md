@@ -339,10 +339,21 @@ has a partial answer, so the partial answers have to be added together.
 correct -- which numbers get split where, and how they combine back into
 the right answer -- using ordinary local addition to stand in for a real
 network all-reduce. A later Kaggle T4 × 2 run did pass a real two-rank NCCL
-all-reduce probe, so the environment is no longer hypothetical. But Kiln's
-model tensors and matmuls are still CPU-side: no tensor-parallel model
-execution, parity, scaling efficiency, or communication-overhead number is
-claimed. Those remain the real Phase 12 implementation work.
+all-reduce probe, so the environment is no longer hypothetical.
+
+**Upgraded (Phase 25):** `Model::ForwardTensorParallelSimulated` runs the
+same column-parallel/row-parallel scheme against this project's actual
+model class and real weight tensors, not synthetic matrices -- attention
+is sharded by giving each simulated rank a contiguous slice of the heads
+(no communication needed, since one head's attention never depends on
+another head's numbers) and the output/down projections are row-parallel,
+with each rank's partial contribution summed to stand in for the one real
+all-reduce a genuine multi-GPU run needs per block. Tested exactly (not
+just close) against the plain unsharded `Forward()` at world_size 1, 2,
+and 4. Still CPU-side and still simulated in one process -- no real
+multi-GPU model execution, scaling efficiency, or communication-overhead
+number exists yet, and that remains the real, larger implementation work
+this phase was always going to require.
 
 ## Phase 13 — Evaluation infrastructure
 

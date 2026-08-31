@@ -134,6 +134,19 @@ py::array_t<float> ModelForwardPrefillBatch(const Model& model,
   return out;
 }
 
+py::array_t<float> ModelForwardTensorParallelSimulated(const Model& model,
+                                                        ContiguousInt32Array tokens,
+                                                        int64_t world_size) {
+  auto input = tokens.request();
+  if (input.ndim != 1) throw std::invalid_argument("tokens must be 1D");
+  int64_t seq_len = input.shape[0];
+  py::array_t<float> out({seq_len, model.config().vocab_size});
+  model.ForwardTensorParallelSimulated(static_cast<const int32_t*>(input.ptr),
+                                       seq_len, world_size,
+                                       static_cast<float*>(out.request().ptr));
+  return out;
+}
+
 void ModelMergeLoraIntoLayer(Model& model, int64_t layer_idx,
                              const std::string& which,
                              ContiguousFloatArray lora_a,
@@ -243,6 +256,9 @@ PYBIND11_MODULE(_C, m) {
            py::arg("tokens"), py::arg("positions"), py::arg("caches"))
       .def("forward_prefill_batch", &kiln::ModelForwardPrefillBatch,
            py::arg("tokens"), py::arg("seq_lengths"), py::arg("caches"))
+      .def("forward_tensor_parallel_simulated",
+           &kiln::ModelForwardTensorParallelSimulated,
+           py::arg("tokens"), py::arg("world_size"))
       .def("merge_lora_into_layer", &kiln::ModelMergeLoraIntoLayer,
            py::arg("layer_idx"), py::arg("which"), py::arg("lora_a"),
            py::arg("lora_b"), py::arg("scale"))

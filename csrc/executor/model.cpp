@@ -423,6 +423,147 @@ void Model::ForwardPrefillBatch(const int32_t* tokens, int64_t num_sequences,
          config_.vocab_size);
 }
 
+namespace {
+
+// wo and w_down are stored [out_features, in_features] row-major, so a
+// *column* slice (the in_features range one rank owns) is not a
+// contiguous block the way a row slice is -- this gathers that column
+// slice into its own small contiguous buffer once per rank, per layer.
+// This is data movement, not new numerical code: every number it copies
+// is untouched, and GemmBT is then called exactly the way it already is
+// everywhere else in this file.
+void GatherColumnSlice(const float* full, int64_t out_features,
+                       int64_t full_in_features, int64_t slice_start,
+                       int64_t slice_width, float* out_slice) {
+  for (int64_t row = 0; row < out_features; ++row) {
+    std::memcpy(out_slice + row * slice_width,
+                full + row * full_in_features + slice_start,
+                slice_width * sizeof(float));
+  }
+}
+
+}  // namespace
+
+void Model::ForwardTensorParallelSimulated(const int32_t* tokens,
+                                           int64_t seq_len,
+                                           int64_t world_size,
+                                           float* out_logits) const {
+  if (config_.n_heads % world_size != 0 || config_.n_kv_heads % world_size != 0 ||
+      config_.ffn_hidden % world_size != 0) {
+    throw std::invalid_argument(
+        "ForwardTensorParallelSimulated: n_heads, n_kv_heads, and ffn_hidden "
+        "must all divide evenly by world_size");
+  }
+
+  int64_t d = config_.hidden_size;
+  int64_t heads_per_rank = config_.n_heads / world_size;
+  int64_t kv_heads_per_rank = config_.n_kv_heads / world_size;
+  int64_t q_dim = config_.n_heads * config_.head_dim;
+  int64_t q_dim_per_rank = heads_per_rank * config_.head_dim;
+  int64_t kv_dim_per_rank = kv_heads_per_rank * config_.head_dim;
+  int64_t ffn_per_rank = config_.ffn_hidden / world_size;
+
+  std::vector<float> x(seq_len * d);
+  for (int64_t i = 0; i < seq_len; ++i) {
+    std::memcpy(x.data() + i * d, tok_embeddings.data() + tokens[i] * d,
+                d * sizeof(float));
+  }
+  std::vector<int64_t> positions(seq_len);
+  for (int64_t i = 0; i < seq_len; ++i) positions[i] = i;
+
+  std::vector<float> normed(seq_len * d);
+  std::vector<float> attn_combined(seq_len * d);
+  std::vector<float> mlp_combined(seq_len * d);
+  std::vector<float> wo_shard(d * q_dim_per_rank);
+  std::vector<float> w_down_shard(d * ffn_per_rank);
+  std::vector<float> q_shard(seq_len * q_dim_per_rank);
+  std::vector<float> k_shard(seq_len * kv_dim_per_rank);
+  std::vector<float> v_shard(seq_len * kv_dim_per_rank);
+  std::vector<float> attn_out_shard(seq_len * q_dim_per_rank);
+  std::vector<float> partial(seq_len * d);
+
+  for (int64_t layer_idx = 0; layer_idx < config_.n_layers; ++layer_idx) {
+    const LayerWeights& layer = layers[layer_idx];
+
+    // The two norms below run once, in full, on every rank in a real
+    // multi-GPU deployment (they're cheap and every rank needs the same
+    // answer) -- so there's exactly one call here too, not one per rank.
+    RmsNorm(x.data(), layer.attn_norm.data(), normed.data(), seq_len, d,
+            config_.rms_eps);
+    std::fill(attn_combined.begin(), attn_combined.end(), 0.0f);
+
+    for (int64_t rank = 0; rank < world_size; ++rank) {
+      const float* wq_shard = layer.wq.data() + rank * q_dim_per_rank * d;
+      const float* wk_shard = layer.wk.data() + rank * kv_dim_per_rank * d;
+      const float* wv_shard = layer.wv.data() + rank * kv_dim_per_rank * d;
+
+      GemmBT(normed.data(), wq_shard, q_shard.data(), seq_len, d, q_dim_per_rank);
+      GemmBT(normed.data(), wk_shard, k_shard.data(), seq_len, d, kv_dim_per_rank);
+      GemmBT(normed.data(), wv_shard, v_shard.data(), seq_len, d, kv_dim_per_rank);
+
+      // RoPE's rotation angle depends only on a token's position and which
+      // pair-of-numbers within a head it is -- never on which head, or how
+      // many heads there are in total -- so applying it to this rank's
+      // subset of heads is identical to applying it to all heads and
+      // keeping only this subset's numbers afterward.
+      ApplyRope(q_shard.data(), positions.data(), seq_len, heads_per_rank,
+                config_.head_dim, config_.rope_theta);
+      ApplyRope(k_shard.data(), positions.data(), seq_len, kv_heads_per_rank,
+                config_.head_dim, config_.rope_theta);
+
+      // Column-parallel attention: this rank's heads are independent of
+      // every other rank's heads, so the exact same Attention() function
+      // used everywhere else in this file runs unmodified on just this
+      // rank's slice -- no communication needed for attention itself.
+      Attention(q_shard.data(), k_shard.data(), v_shard.data(),
+                attn_out_shard.data(), seq_len, seq_len, heads_per_rank,
+                kv_heads_per_rank, config_.head_dim, /*query_start_pos=*/0);
+
+      GatherColumnSlice(layer.wo.data(), d, q_dim, rank * q_dim_per_rank,
+                        q_dim_per_rank, wo_shard.data());
+      GemmBT(attn_out_shard.data(), wo_shard.data(), partial.data(), seq_len,
+             q_dim_per_rank, d);
+      // The one combine step per block (constitution: the real point of
+      // pairing column-parallel with row-parallel) -- summing every rank's
+      // partial output stands in for the single real all-reduce a genuine
+      // multi-GPU run would need here, the same simulated substitution
+      // tensor_parallel_sim.py already uses and names honestly.
+      for (int64_t i = 0; i < seq_len * d; ++i) attn_combined[i] += partial[i];
+    }
+    for (int64_t i = 0; i < seq_len * d; ++i) x[i] += attn_combined[i];
+
+    RmsNorm(x.data(), layer.ffn_norm.data(), normed.data(), seq_len, d,
+            config_.rms_eps);
+    std::fill(mlp_combined.begin(), mlp_combined.end(), 0.0f);
+
+    for (int64_t rank = 0; rank < world_size; ++rank) {
+      const float* w_gate_shard = layer.w_gate.data() + rank * ffn_per_rank * d;
+      const float* w_up_shard = layer.w_up.data() + rank * ffn_per_rank * d;
+      GatherColumnSlice(layer.w_down.data(), d, config_.ffn_hidden,
+                        rank * ffn_per_rank, ffn_per_rank, w_down_shard.data());
+
+      // Each rank's SwiGlu call already produces a complete partial
+      // contribution to the full `dim`-sized output -- restricting
+      // ffn_hidden to this rank's slice just restricts which hidden units
+      // that sum runs over, so summing every rank's result gives exactly
+      // the same answer the unsharded call would.
+      SwiGlu(normed.data(), w_gate_shard, w_up_shard, w_down_shard.data(),
+             partial.data(), seq_len, d, ffn_per_rank);
+      for (int64_t i = 0; i < seq_len * d; ++i) mlp_combined[i] += partial[i];
+    }
+    for (int64_t i = 0; i < seq_len * d; ++i) x[i] += mlp_combined[i];
+  }
+
+  // The embedding table and LM head are kept full/replicated here rather
+  // than sharded -- the plan's stated Phase 12 scope is attention and MLP
+  // sharding specifically (see docs/defense.md); vocab-parallel embeddings
+  // are a real, separate technique this doesn't claim to cover.
+  RmsNorm(x.data(), final_norm.data(), normed.data(), seq_len, d,
+          config_.rms_eps);
+  GemmBT(normed.data(), lm_head.data(), out_logits, seq_len, d,
+         config_.vocab_size);
+}
+
 void Model::MergeLoraIntoLayer(int64_t layer_idx, const std::string& which,
                                const float* lora_a, const float* lora_b,
                                int64_t rank, float scale) {

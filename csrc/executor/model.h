@@ -87,6 +87,22 @@ class Model {
                            const int64_t* seq_lengths,
                            KVCache* const* caches, float* out_logits) const;
 
+  // Tensor-parallel forward pass, simulated across `world_size` ranks in
+  // this one process -- the Megatron-style scheme ADR-012/Phase 12 already
+  // proved exact on synthetic matrices in kiln_py/runtime/tensor_parallel_sim.py,
+  // run here for real against this model's own weights. Attention is
+  // column-parallel (each rank owns a contiguous slice of the heads and
+  // computes attention for just those heads -- no communication needed,
+  // since one head's attention never depends on another head's numbers)
+  // and the output/down projections are row-parallel (each rank computes
+  // its own partial contribution to the full output; the ranks' partial
+  // sums are added together, standing in for the one real network
+  // all-reduce a multi-GPU run would need per block). Requires n_heads,
+  // n_kv_heads, and ffn_hidden to all divide evenly by world_size.
+  void ForwardTensorParallelSimulated(const int32_t* tokens, int64_t seq_len,
+                                      int64_t world_size,
+                                      float* out_logits) const;
+
   const ModelConfig& config() const { return config_; }
 
   // Folds a trained LoRA adapter into one weight matrix of one layer, in

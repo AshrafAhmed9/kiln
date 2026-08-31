@@ -309,5 +309,63 @@ TEST(Model, RaggedPrefillContinuesFromExistingCacheLength) {
   }
 }
 
+// Phase 12/25's tensor-parallel claim, checked against the model's own
+// real weights rather than synthetic matrices: sharding attention and MLP
+// across several simulated ranks and summing each block's partial outputs
+// must produce exactly the same logits as the plain unsharded forward
+// pass, for every world_size that evenly divides this config's head and
+// ffn_hidden counts.
+TEST(Model, TensorParallelMatchesUnshardedForwardAtEveryValidWorldSize) {
+  ModelConfig config;
+  config.vocab_size = 16;
+  config.hidden_size = 8;
+  config.n_layers = 2;
+  config.n_heads = 8;
+  config.n_kv_heads = 4;
+  config.head_dim = 4;
+  config.ffn_hidden = 16;
+  config.max_seq_len = 32;
+  config.rms_eps = 1e-5f;
+  config.rope_theta = 10000.0f;
+  Model model = Model::LoadRandom(config, /*seed=*/13);
+
+  int32_t tokens[] = {1, 2, 3, 4, 5};
+  int64_t seq_len = 5;
+  std::vector<float> reference_logits(seq_len * config.vocab_size);
+  model.Forward(tokens, 1, seq_len, nullptr, 0, nullptr,
+                reference_logits.data());
+
+  for (int64_t world_size : {1, 2, 4}) {
+    std::vector<float> sharded_logits(seq_len * config.vocab_size);
+    model.ForwardTensorParallelSimulated(tokens, seq_len, world_size,
+                                         sharded_logits.data());
+    for (int64_t i = 0; i < seq_len * config.vocab_size; ++i) {
+      EXPECT_NEAR(sharded_logits[i], reference_logits[i], 1e-3f)
+          << "world_size=" << world_size << " index=" << i;
+    }
+  }
+}
+
+TEST(Model, TensorParallelRejectsAWorldSizeThatDoesNotDivideEvenly) {
+  ModelConfig config;
+  config.vocab_size = 16;
+  config.hidden_size = 8;
+  config.n_layers = 1;
+  config.n_heads = 4;
+  config.n_kv_heads = 2;
+  config.head_dim = 4;
+  config.ffn_hidden = 16;
+  config.max_seq_len = 32;
+  config.rms_eps = 1e-5f;
+  config.rope_theta = 10000.0f;
+  Model model = Model::LoadRandom(config, /*seed=*/14);
+
+  int32_t tokens[] = {1, 2, 3};
+  std::vector<float> out(3 * config.vocab_size);
+  EXPECT_THROW(model.ForwardTensorParallelSimulated(tokens, 3, /*world_size=*/3,
+                                                    out.data()),
+              std::invalid_argument);
+}
+
 }  // namespace
 }  // namespace kiln

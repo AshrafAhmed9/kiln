@@ -171,3 +171,25 @@ median of 1000 iterations). Nsight Compute profiling was attempted in the
 same run and failed with `ERR_NVGPUCTRPERM` — Kaggle's container does not
 grant GPU performance-counter access — a real, named platform limitation,
 not a build bug.
+
+## Phase 25 (attempted) — Nsight profiling blocked by GCP capacity, not by anything in this repo
+
+**What happened:** `tools/run_gcp_gpu_validation.sh` (the intended path around
+Kaggle's perf-counter restriction, since a real GCE VM has root) was run five
+times against `kiln-gpu-profiling`, across `nvidia-tesla-t4` in
+`us-central1-a`, `us-east1-c`, `us-west1-b`, and `europe-west4-a`, and
+`nvidia-tesla-p100` in `us-central1-a` and `us-central1-c`. Every attempt
+failed at `gcloud compute instances create` with `ZONE_RESOURCE_POOL_EXHAUSTED`
+(one also hit "accelerator type not found" for P100 in a zone that doesn't
+offer it) — the project has real GPU quota (verified via `gcloud compute
+regions describe`) and billing is enabled, but GCP had no on-demand GPU
+capacity to hand out in any zone tried, at the time this was run.
+
+**Why this is recorded here instead of silently retried forever:** none of
+these attempts created a billable resource — the script's `trap cleanup`
+never fires because there's nothing to clean up when `instances create`
+itself fails — so this cost nothing, but it's still a real, reproducible
+result worth keeping rather than quietly giving up. Nsight profiling stays a
+named, honest gap until either GCP capacity frees up in some zone, a
+different cloud GPU provider is used, or physical GPU access becomes
+available.

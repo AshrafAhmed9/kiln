@@ -261,6 +261,23 @@ quantizer is also plain round-to-nearest, not the more sophisticated,
 output-aware rounding real schemes like GPTQ use -- a real and named gap,
 not an implied equivalence.
 
+**Upgraded (Phase 26) — the real speed measurement, and the hardware line
+it hit:** everything above only ever ran a dequantize-then-FP32 GEMM, which
+can prove accuracy but can never show a speed win. `Int8GemmBT` (CPU) and
+`Int8GemmBTCuda` (GPU, via cuBLAS's `CUBLAS_COMPUTE_32I`) accumulate real
+INT8xINT8 products in INT32 and scale once at the end -- the actual
+computation GPU tensor cores accelerate. The CPU path is tested against
+the existing dequantize-then-FP32 path directly. The CUDA path needs
+compute capability 6.1+; every free GPU session reached this pass landed
+one step short of that (Kaggle: P100, 6.0, on every attempt; five separate
+GCE T4 attempts across different zones all failed on
+`ZONE_RESOURCE_POOL_EXHAUSTED` before a VM was even created -- see
+docs/correctness.md and docs/learning/phase-26.md). The test and benchmark
+detect this and report a clear `SKIPPED`, not a false pass or an
+unexplained crash. Code, wiring, and CPU verification are done; the one
+number still missing is the real GPU speedup, blocked purely on GPU
+access, not on anything left to build.
+
 ## Phase 10 — Speculative decoding
 
 **What:** a small "draft" model guesses several words ahead; a single pass

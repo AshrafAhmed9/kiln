@@ -31,6 +31,17 @@ int ParsePositive(const char* text, const char* name) {
   return value;
 }
 
+// See tests/cpp/cuda_kernels_test.cu's DeviceSupportsInt8TensorCores for
+// why this specific version check exists (a P100's compute capability 6.0
+// is one minor version short of cuBLAS's INT8 tensor-core path).
+bool DeviceSupportsInt8TensorCores() {
+  int device = 0;
+  CheckCuda(cudaGetDevice(&device), "cudaGetDevice");
+  cudaDeviceProp props;
+  CheckCuda(cudaGetDeviceProperties(&props, device), "cudaGetDeviceProperties");
+  return (props.major > 6) || (props.major == 6 && props.minor >= 1);
+}
+
 template <typename T>
 float TimeMedianMs(int iterations, T&& launch_and_sync) {
   cudaEvent_t start, end;
@@ -57,6 +68,13 @@ float TimeMedianMs(int iterations, T&& launch_and_sync) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  if (!DeviceSupportsInt8TensorCores()) {
+    std::cout << "SKIPPED: this GPU's compute capability is below 6.1 -- "
+                 "cuBLAS's INT8 tensor-core path isn't available here. "
+                 "Real, named hardware gap, not a benchmark failure.\n";
+    return 0;
+  }
+
   // SmolLM2-135M's own dimensions (Phase 22's real reference checkpoint):
   // hidden_size 576, one MLP projection at 1536. K must be a multiple of 4
   // for cuBLAS's INT8 IMMA path; both these already are.

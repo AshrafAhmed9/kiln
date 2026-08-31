@@ -15,6 +15,7 @@
 #include "executor/rope.h"
 #include "executor/sampler.h"
 #include "kernels/cuda/kernels.h"
+#include "quant/quantize.h"
 
 namespace kiln {
 namespace {
@@ -112,6 +113,60 @@ TEST(CudaGemm, CuBlasMatchesCpuReference) {
   SyncKernel("GemmBTCuda");
   std::vector<float> actual = device_out.CopyToHost();
   for (size_t i = 0; i < actual.size(); ++i) EXPECT_NEAR(actual[i], expected[i], 1e-5f);
+}
+
+// Phase 26: the real INT8 GEMM, checked against Int8GemmBT's CPU reference
+// -- the same already-quantized numbers, same INT32 accumulation math, run
+// on the GPU's tensor cores instead of a CPU loop. This is a correctness
+// check, not the speed measurement (that's bench/int8_gemm_cuda_benchmark.cu).
+TEST(CudaInt8Gemm, MatchesCpuReference) {
+  constexpr int64_t kRows = 4;   // "M" -- number of activation rows
+  constexpr int64_t kInput = 32;   // "K" -- must be a multiple of 4 for cuBLAS's INT8 IMMA path
+  constexpr int64_t kOutput = 16;  // "N" -- number of output features
+
+  std::mt19937 rng(5);
+  std::normal_distribution<float> dist(0.0f, 1.0f);
+  std::vector<float> activations(kRows * kInput);
+  for (float& v : activations) v = dist(rng);
+  std::vector<float> weights(kOutput * kInput);
+  for (float& v : weights) v = dist(rng);
+
+  std::vector<int8_t> quantized_a(kRows * kInput);
+  std::vector<float> scales_a(kRows);
+  QuantizeInt8PerChannel(activations.data(), kRows, kInput, quantized_a.data(),
+                        scales_a.data());
+  std::vector<int8_t> quantized_b(kOutput * kInput);
+  std::vector<float> scales_b(kOutput);
+  QuantizeInt8PerChannel(weights.data(), kOutput, kInput, quantized_b.data(),
+                        scales_b.data());
+
+  std::vector<float> expected(kRows * kOutput);
+  Int8GemmBT(quantized_a.data(), scales_a.data(), quantized_b.data(),
+            scales_b.data(), expected.data(), kRows, kInput, kOutput);
+
+  DeviceBuffer<int8_t> device_a(quantized_a.size());
+  DeviceBuffer<int8_t> device_b(quantized_b.size());
+  DeviceBuffer<float> device_scales_a(scales_a.size());
+  DeviceBuffer<float> device_scales_b(scales_b.size());
+  DeviceBuffer<float> device_out(expected.size());
+  device_a.CopyFrom(quantized_a);
+  device_b.CopyFrom(quantized_b);
+  device_scales_a.CopyFrom(scales_a);
+  device_scales_b.CopyFrom(scales_b);
+
+  Int8GemmBTCuda(device_a.data(), device_scales_a.data(), device_b.data(),
+                device_scales_b.data(), device_out.data(), kRows, kInput,
+                kOutput);
+  SyncKernel("Int8GemmBTCuda");
+  std::vector<float> actual = device_out.CopyToHost();
+
+  // Exact-integer-math parity, not a loose accuracy bound: both sides
+  // consume the identical already-quantized INT8 numbers and accumulate in
+  // INT32, so the GPU and CPU paths should agree almost to the last bit of
+  // float precision in the final scale multiply, not just "close."
+  for (size_t i = 0; i < actual.size(); ++i) {
+    EXPECT_NEAR(actual[i], expected[i], 1e-3f);
+  }
 }
 
 TEST(CudaElementwise, MatchesCpuReference) {

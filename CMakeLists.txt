@@ -65,6 +65,7 @@ if(KILN_BUILD_CUDA)
     csrc/executor/cuda_model.cu
     csrc/kernels/cuda/attention.cu
     csrc/kernels/cuda/gemm.cu
+    csrc/kernels/cuda/int8_gemm.cu
     csrc/kernels/cuda/elementwise.cu
     csrc/kernels/cuda/rmsnorm.cu
     csrc/kernels/cuda/rope.cu
@@ -86,6 +87,15 @@ if(KILN_BUILD_CUDA)
   target_link_libraries(kiln_rope_cuda_benchmark PRIVATE kiln_cuda CUDA::cudart)
   target_include_directories(kiln_rope_cuda_benchmark PRIVATE csrc)
   set_target_properties(kiln_rope_cuda_benchmark PROPERTIES
+    CUDA_STANDARD 17
+    CUDA_STANDARD_REQUIRED ON
+    CUDA_ARCHITECTURES ${KILN_CUDA_ARCHITECTURES}
+  )
+
+  add_executable(kiln_int8_gemm_cuda_benchmark bench/int8_gemm_cuda_benchmark.cu)
+  target_link_libraries(kiln_int8_gemm_cuda_benchmark PRIVATE kiln_cuda CUDA::cudart CUDA::cublas)
+  target_include_directories(kiln_int8_gemm_cuda_benchmark PRIVATE csrc)
+  set_target_properties(kiln_int8_gemm_cuda_benchmark PROPERTIES
     CUDA_STANDARD 17
     CUDA_STANDARD_REQUIRED ON
     CUDA_ARCHITECTURES ${KILN_CUDA_ARCHITECTURES}

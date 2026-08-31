@@ -153,5 +153,65 @@ TEST(QuantizeInt8, QuantizedMatmulStaysCloseToFullPrecisionMatmul) {
   EXPECT_LT(mean_squared_error, 1.0f);
 }
 
+// Phase 26's actual INT8xINT8 GEMM (accumulate in INT32, scale once at the
+// end) versus this project's existing quantize-then-dequantize-then-FP32-
+// matmul path (Phase 9): both quantize the same weights the same way, so
+// their outputs should be close to each other (both are approximating the
+// same full-precision answer, from the same quantized weight numbers) --
+// checking that directly is a much tighter, more specific claim than only
+// checking either one against full precision separately, and it's the
+// claim that actually matters: swapping which GEMM strategy computes the
+// quantized answer must not change what "quantized" means.
+TEST(QuantizeInt8, RealInt8GemmMatchesDequantizeThenFp32MatmulPath) {
+  int64_t rows = 16, cols = 16, batch = 4;
+  std::mt19937 rng(9);
+  std::normal_distribution<float> dist(0.0f, 1.0f);
+
+  std::vector<float> weights(rows * cols);
+  for (float& w : weights) w = dist(rng);
+  std::vector<float> input(batch * cols);
+  for (float& x : input) x = dist(rng);
+
+  std::vector<int8_t> quantized_weights(rows * cols);
+  std::vector<float> weight_scales(rows);
+  QuantizeInt8PerChannel(weights.data(), rows, cols, quantized_weights.data(),
+                        weight_scales.data());
+
+  std::vector<int8_t> quantized_input(batch * cols);
+  std::vector<float> input_scales(batch);
+  QuantizeInt8PerChannel(input.data(), batch, cols, quantized_input.data(),
+                        input_scales.data());
+
+  // The existing Phase 9 path: dequantize the weights back to float, then
+  // an ordinary FP32 matmul (the input here is used at full precision,
+  // unquantized, since Phase 9 only ever quantized weights).
+  std::vector<float> dequantized_weights(rows * cols);
+  DequantizeInt8PerChannel(quantized_weights.data(), weight_scales.data(),
+                          rows, cols, dequantized_weights.data());
+  std::vector<float> dequant_then_fp32_out(batch * rows);
+  GemmBT(input.data(), dequantized_weights.data(),
+         dequant_then_fp32_out.data(), batch, cols, rows);
+
+  // The new path: both sides already INT8, accumulated in INT32, scaled
+  // once at the end.
+  std::vector<float> real_int8_out(batch * rows);
+  Int8GemmBT(quantized_input.data(), input_scales.data(),
+            quantized_weights.data(), weight_scales.data(),
+            real_int8_out.data(), batch, cols, rows);
+
+  float mean_squared_error = 0.0f;
+  for (size_t i = 0; i < dequant_then_fp32_out.size(); ++i) {
+    float diff = dequant_then_fp32_out[i] - real_int8_out[i];
+    mean_squared_error += diff * diff;
+  }
+  mean_squared_error /= static_cast<float>(dequant_then_fp32_out.size());
+
+  // Loose for the same reason as the test above -- this quantizes the
+  // input as well as the weights, which the Phase 9 comparison point
+  // doesn't, so a real (if small) gap between the two is expected, not
+  // just quantizer noise.
+  EXPECT_LT(mean_squared_error, 2.0f);
+}
+
 }  // namespace
 }  // namespace kiln

@@ -130,4 +130,33 @@ void DequantizeInt4GroupWise(const uint8_t* packed, const float* scales,
   }
 }
 
+void Int8GemmBT(const int8_t* a_quantized, const float* a_scales,
+                const int8_t* b_quantized_transposed, const float* b_scales,
+                float* c, int64_t M, int64_t K, int64_t N) {
+  for (int64_t m = 0; m < M; ++m) {
+    const int8_t* a_row = a_quantized + m * K;
+    float a_scale = a_scales[m];
+
+    for (int64_t n = 0; n < N; ++n) {
+      const int8_t* b_row = b_quantized_transposed + n * K;
+
+      // INT32 accumulation is the entire point: two INT8 numbers multiply
+      // to at most 127*127 = 16129, and this sums up to K of those --
+      // still nowhere near overflowing a 32-bit integer for any realistic
+      // hidden size, which is why INT32 (not INT8 or INT16) is what GPU
+      // INT8 tensor cores actually accumulate into as well.
+      int32_t acc = 0;
+      for (int64_t k = 0; k < K; ++k) {
+        acc += static_cast<int32_t>(a_row[k]) * static_cast<int32_t>(b_row[k]);
+      }
+
+      // Converting back to a real number happens exactly once per output
+      // element, after every INT8 multiply-add is done -- not per
+      // multiply -- which is what makes this fast: the expensive inner
+      // loop never touches a float at all.
+      c[m * N + n] = static_cast<float>(acc) * a_scale * b_scales[n];
+    }
+  }
+}
+
 }  // namespace kiln

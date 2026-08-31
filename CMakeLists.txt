@@ -17,7 +17,7 @@ if(KILN_SANITIZE)
   add_link_options(-fsanitize=address,undefined)
 endif()
 
-find_package(nlohmann_json 3.11 REQUIRED)
+find_package(nlohmann_json 3.10 REQUIRED)
 find_package(ICU REQUIRED COMPONENTS i18n uc)
 
 # The compute layer (csrc/) -- constitution §6: everything below the

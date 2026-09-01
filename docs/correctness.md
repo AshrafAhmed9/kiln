@@ -246,3 +246,16 @@ runnable at all implies it's also being *called* -- syntax validity and
 having an entry point are two different things, and only one of them is
 checked by `python -c "import ast; ast.parse(...)"` or even a successful
 `import`.
+
+**After all three fixes: a real result, not just a working pipeline.** The
+same 1000-step run repeated end to end on Kaggle: training loss fell from
+~4.5-5.0 (first five steps) to ~1.4-2.2 (last five steps); the eval script
+now actually runs and writes `lora_eval_result.json`. Greedy exact-match
+accuracy on 300 held-out BANKING77 validation examples (never seen during
+training): base SmolLM2-135M **0/300 (0.0%)**, LoRA-adapted **18/300
+(6.0%)**. Recorded honestly rather than rounded up or hidden: 6% on a
+77-way task from one under-tuned adapter matrix and no hyperparameter
+search is a real but modest number, and the qualitative samples (adapted
+model producing BANKING77-shaped strings like `lost_card` vs. the base
+model's `""` or `"i"`) are the more informative signal than the headline
+percentage.

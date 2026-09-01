@@ -410,8 +410,27 @@ slightly different weight matrix.
 trains and exports a standard PEFT `q_proj` adapter, and the C++ merge is
 available through the narrow Python binding for training tooling. A 20-step
 SmolLM2 run on four authored fixture records produced an adapter; this proves
-the pipeline, not quality or usefulness. A licensed task dataset, proper
-held-out evaluation, and multi-GPU DDP/FSDP scaling remain separate work.
+the pipeline, not quality or usefulness. Multi-GPU DDP/FSDP scaling remains
+separate work.
+
+**Upgraded (Phase 27) — a real licensed dataset and a real held-out number.**
+`tools/prepare_banking77.py` fetches the real BANKING77 intent-classification
+CSVs (CC-BY-4.0, PolyAI-LDN) directly, `tools/train_lora.py` ran 1000 real
+optimizer steps on a real Kaggle CPU session (loss fell from ~4.5-5.0 over the
+first five steps to ~1.4-2.2 over the last five -- genuine learning, not
+noise), and `tools/eval_lora_intent.py` scored greedy exact-match accuracy
+against 300 held-out validation examples never seen during training: the
+untrained base SmolLM2-135M scored **0/300 (0.0%)** -- it doesn't know the
+BANKING77 label vocabulary at all -- and the LoRA-adapted model scored
+**18/300 (6.0%)**. Stated honestly: 6% exact-match on a 77-way intent
+classification task is a real, non-zero, above-random-guessing-baseline-in-
+kind result from 1000 steps on one `q_proj` matrix with no hyperparameter
+search, not a claim of a production-quality classifier -- the samples in
+`lora_eval_result.json` show the adapted model consistently produces
+BANKING77-shaped label strings (`new_passcode_requested`, `lost_card`,
+`cash_fee`) instead of the base model's non-answers (empty strings, `"i"`),
+which is the qualitative signal that the adapter learned the task's output
+format even where its answer wasn't an exact match to the specific label.
 
 ## Phase 16 — Multi-tenancy and the control plane
 

@@ -194,6 +194,37 @@ named, honest gap until either GCP capacity frees up in some zone, a
 different cloud GPU provider is used, or physical GPU access becomes
 available.
 
+**Retried (Phase 28):** eight more zones (`us-central1-b`, `us-central1-f`,
+`us-east4-a`, `asia-east1-a`, `asia-southeast1-b`, `southamerica-east1-c`,
+`europe-west1-b`, `us-west1-a`) attempted against `nvidia-tesla-t4`, all
+failing at `instances create` with the same
+`ZONE_RESOURCE_POOL_EXHAUSTED` / `resource_availability` error before any VM
+was created. Eleven zone attempts total across both sessions, zero cost each
+time. This is a real, sustained lack of on-demand GPU capacity on GCP's free
+side of things at the time of writing, not a bug in the script or a mistake
+in zone selection — the accelerator type is confirmed valid in every zone
+tried (`gcloud compute accelerator-types describe` succeeds in all of them);
+there simply isn't a free VM slot to attach it to.
+
+## Phase 28 — running the existing HF-parity fixture and tokenizer test for real, on a second checkpoint
+
+`tools/fixtures/hf_parity_prompts.txt` (10 prompts covering short/long
+lengths, Unicode, and punctuation) existed since Phase 22 but had never
+actually been run — the only measured result was a single hardcoded prompt.
+Running the full fixture via `tools/hf_parity.py --prompts-file` against
+`HuggingFaceTB/SmolLM2-135M-Instruct` (requires `PYTHONPATH=.` from the repo
+root — running the script directly puts `tools/` rather than the repo root on
+`sys.path`, so `from kiln_py import _C` fails otherwise) produced 10/10 top-1
+matches, worst-case max absolute logit difference 6.63×10⁻⁵. Downloading a
+second, structurally different checkpoint, `HuggingFaceTB/SmolLM2-360M-Instruct`
+(960 hidden size, 32 layers, 15 query heads / 5 KV heads — a different GQA
+group ratio than the 135M model's), and running the identical fixture and
+`tools/tokenizer_conformance.py` against it with zero code changes produced
+10/10 top-1 matches (worst-case max absolute difference 5.07×10⁻⁵) and
+10,000/10,000 seeded tokenizer matches. No bug was found in this pass — the
+existing tooling was already correct; what was missing was actually running
+it against more than one prompt and one checkpoint.
+
 ## Phase 27 — three real bugs, found only by actually running the LoRA pipeline for the first time
 
 `tools/prepare_banking77.py`, `tools/train_lora.py`, and

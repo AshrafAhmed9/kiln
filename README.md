@@ -87,12 +87,20 @@ smaller model as a scout.
 now compile and pass small CPU-vs-GPU correctness tests on Kaggle P100 and
 T4 GPUs; the T4 run also gives a narrow raw-CUDA-vs-Triton RoPE benchmark.
 A device-resident CUDA prefill and cached-decode path have also matched the
-CPU model's complete logits on a T4. The Python CUDA binding, profiler tuning,
-and multi-GPU model execution remain pending validation (Kaggle blocks
-performance counters). One real Llama-family
-checkpoint has now passed a final-logit comparison (details below), but
-per-layer parity is available through a debug-only capture path, while the
-named 10,000-string tokenizer fixture is conformant. And
+CPU model's complete logits on a T4. Tensor parallelism is tested against the
+real model's own weights, but as a single-process simulation of sharded
+ranks, not distributed across actual separate GPUs -- no multi-GPU machine
+has been available to run it on real hardware. Nsight profiling and a
+measured real-hardware INT8-vs-FP32 GEMM speedup both remain blocked
+specifically on GPU access: Kaggle blocks performance counters outright, its
+free sessions land on a P100 one minor compute-capability version below
+what INT8 tensor cores require, and eleven separate attempts at a GCP GPU VM
+across as many zones all failed with `ZONE_RESOURCE_POOL_EXHAUSTED` before
+creating anything billable. Two real Llama-family
+checkpoints have now passed a full 10-prompt final-logit comparison each
+(details below), but per-layer parity is available through a debug-only
+capture path rather than checked by default, and the named 10,000-string
+tokenizer fixture is conformant on both checkpoints' tokenizers. And
 nobody has actually used this — there's no live website, no real users, no
 incident that ever happened — because that would take an actual public
 launch, which is a decision for later, not something to fake. Every one of
@@ -199,13 +207,18 @@ what's honestly still missing; `docs/interview-prep.md` has the prepared
 answers to the specific questions this project invites. Nothing here
 claims more than what was actually run and checked.
 
-One CPU-only reference check now exists: with
-`HuggingFaceTB/SmolLM2-135M-Instruct`, the prompt `Kiln checks its own
-math.` produced matching top-1 next-token IDs between Hugging Face FP32 and
-Kiln. The measured final-logit difference was **7.44×10⁻⁵ max absolute** and
-**1.23×10⁻⁵ mean absolute**. This is one checkpoint and one prompt, not a
-complete parity proof. Run it after `pip install -e '.[oracle]'` with
-`PYTHONPATH=. python tools/hf_parity.py --model-dir PATH`.
+CPU-only reference checks now exist against two real, structurally different
+Llama-family checkpoints: `HuggingFaceTB/SmolLM2-135M-Instruct` and
+`HuggingFaceTB/SmolLM2-360M-Instruct` (different hidden size, depth, and
+grouped-query-attention ratio). All 10 prompts in
+`tools/fixtures/hf_parity_prompts.txt` (short/long sequences, Unicode,
+punctuation) produce matching top-1 next-token IDs between Hugging Face FP32
+and Kiln on both checkpoints, with final-logit differences in the low
+10⁻⁵ range (worst case **6.63×10⁻⁵** on the 135M model, **5.07×10⁻⁵** on the
+360M model). This is two checkpoints and ten prompts each, not a complete
+parity proof across every checkpoint and input that exists. Run it after
+`pip install -e '.[oracle]'` with `PYTHONPATH=. python tools/hf_parity.py
+--model-dir PATH --prompts-file tools/fixtures/hf_parity_prompts.txt`.
 
 As of this writing: the checked-in suites include the C++ tests (including
 memory-safety tooling, and 61/61 on a real Kaggle GPU with `KILN_BUILD_CUDA`

@@ -568,6 +568,23 @@ of 10,000 cases. That adds a native dependency (ADR-014), but does not prove
 conformance for every possible tokenizer configuration or replace broad model
 numerical parity.
 
+**Upgraded (Phase 28) — a real second checkpoint, all 10 fixture prompts, both
+tokenizers.** The 10-prompt fixture (`tools/fixtures/hf_parity_prompts.txt`,
+covering short/long prompts, Unicode, punctuation, and multi-token positions)
+had existed but never actually been run in full -- only the single-prompt
+result above was ever measured. Running it for real against
+`HuggingFaceTB/SmolLM2-135M-Instruct`: all 10 prompts top-1 match, worst-case
+final-logit max absolute difference 6.63×10⁻⁵. A second, structurally
+different checkpoint, `HuggingFaceTB/SmolLM2-360M-Instruct` (hidden size 960,
+32 layers, 15 query / 5 KV heads -- grouped-query attention with a different
+group ratio than the 135M model), ran the exact same 10-prompt fixture with no
+code changes: all 10 top-1 match, worst-case max absolute difference
+5.07×10⁻⁵. Its seeded 10,000-string tokenizer comparison also matched 10,000
+of 10,000. This is still not exhaustive numerical parity across every prompt
+and checkpoint that exists, but it is now real evidence across two different
+model shapes and their two different tokenizer vocabularies, not one prompt
+against one checkpoint.
+
 ## Phase 23 — Cached decode batching reaches the API
 
 **What:** `Model::ForwardDecodeBatch` accepts one decode token, absolute

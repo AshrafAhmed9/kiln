@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
+import traceback
 from pathlib import Path
 
 import torch
@@ -35,14 +37,17 @@ def predict(model, tokenizer, prompt: str, device: str) -> str:
     return match.group(0) if match else ""
 
 
-def score(model, tokenizer, records: list[dict[str, str]], device: str) -> dict:
+def score(model, tokenizer, records: list[dict[str, str]], device: str,
+          label: str) -> dict:
     correct = 0
     samples = []
-    for record in records:
+    for index, record in enumerate(records):
         prediction = predict(model, tokenizer, record["prompt"], device)
         correct += prediction == record["label"]
         if len(samples) < 20:
             samples.append({"label": record["label"], "prediction": prediction})
+        if (index + 1) % 25 == 0 or index + 1 == len(records):
+            print(f"[{label}] scored {index + 1}/{len(records)}", flush=True)
     return {"correct": correct, "total": len(records),
             "exact_match": correct / len(records), "samples": samples}
 
@@ -60,12 +65,34 @@ def main() -> None:
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
     records = load_records(args.data, args.max_examples)
+    print(f"Loaded {len(records)} validation records; device={device}", flush=True)
+
+    print("Loading base model...", flush=True)
     base = AutoModelForCausalLM.from_pretrained(args.model).to(device).eval()
-    baseline = score(base, tokenizer, records, device)
+    print("Scoring baseline...", flush=True)
+    baseline = score(base, tokenizer, records, device, "baseline")
+
+    print("Loading LoRA adapter...", flush=True)
     adapter = PeftModel.from_pretrained(base, args.adapter).to(device).eval()
-    tuned = score(adapter, tokenizer, records, device)
+    print("Scoring adapter...", flush=True)
+    tuned = score(adapter, tokenizer, records, device, "adapter")
+
     args.output.write_text(json.dumps({"metric": "greedy exact-match accuracy",
                                        "baseline": baseline, "adapter": tuned},
                                       indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"baseline": baseline["exact_match"],
                       "adapter": tuned["exact_match"]}, indent=2))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        # This script was previously missing this entry point entirely --
+        # `python3 eval_lora_intent.py ...` defined main() but never called
+        # it, so it silently did nothing and exited 0. Writing any real
+        # failure to a file (not just stdout) means a future run can't go
+        # silent again the same way, regardless of what happens to a
+        # process's captured log output.
+        traceback.print_exc()
+        sys.exit(1)

@@ -193,3 +193,56 @@ result worth keeping rather than quietly giving up. Nsight profiling stays a
 named, honest gap until either GCP capacity frees up in some zone, a
 different cloud GPU provider is used, or physical GPU access becomes
 available.
+
+## Phase 27 — three real bugs, found only by actually running the LoRA pipeline for the first time
+
+`tools/prepare_banking77.py`, `tools/train_lora.py`, and
+`tools/eval_lora_intent.py` were all written and committed but never
+actually run against the real BANKING77 dataset before this pass. Running
+them for real on Kaggle surfaced three separate real bugs, one per attempt:
+
+**Bug 1 — `datasets` refuses PolyAI/banking77's legacy loading script.**
+Recent `datasets` versions refuse to execute any dataset loading script at
+all, as a security policy. A first attempted fix (point at HF's
+auto-converted Parquet mirror via `revision="refs/convert/parquet"`) was
+itself wrong -- checked via the Hub's `/refs` API, no such mirror exists
+for this specific dataset (empty `"converts"` list). The real fix: the
+loading script itself does nothing but download two CSV files from
+PolyAI's own GitHub repo and parse them with the standard `csv` module, so
+`prepare_banking77.py` now fetches those same CSVs directly -- identical
+data, identical CC-BY-4.0 license, one fewer dependency on `datasets`'
+internal script-execution machinery entirely.
+
+**Bug 2 — `torch.cuda.is_available()` doesn't mean CUDA actually works.**
+Kaggle assigned a Tesla P100 (compute capability 6.0). The preinstalled
+PyTorch build's own warning states plainly it only ships kernels for
+compute capability 7.0 and up -- `is_available()` still returns `True`,
+and the first real GPU op fails with `no kernel image is available for
+execution on the device`. Fixed with `tools/_torch_device.py`, which
+actually attempts a trivial CUDA op and falls back to CPU with a printed
+reason on failure, rather than trusting the weaker guarantee
+`is_available()` provides. Real LoRA training then ran on CPU for 1000
+steps and produced a real result: loss fell from ~4.5-4.9 (first five
+steps) to ~1.4-2.2 (last five steps) -- genuine learning, not noise.
+
+**Bug 3 — `eval_lora_intent.py` had no `if __name__ == "__main__":` block
+at all.** `main()` was fully defined and never called anywhere in the
+file. Running `python3 eval_lora_intent.py ...` therefore did *nothing*:
+no output, no error, no written file, a clean exit code 0 -- the single
+hardest kind of bug to notice, because there is no wrong answer to catch,
+only a silently missing one. Caught by noticing the script's expected
+output file simply didn't exist afterward, not by any error message.
+Fixed by adding the missing entry point, wrapped in a top-level
+try/except that writes any real failure's traceback to stderr and exits
+non-zero, so a future real failure can't go silent the same way again.
+
+**What I misunderstood, once per bug:** (1) that a fix for "the library
+refuses to run this" generalizes across different datasets on the same
+platform, when each dataset's actual mirror situation has to be checked,
+not assumed; (2) that `is_available()` answers "does a CUDA device exist"
+rather than the question that actually matters, "can this build of PyTorch
+run a kernel on it"; (3) that a script defining `main()` and being
+runnable at all implies it's also being *called* -- syntax validity and
+having an entry point are two different things, and only one of them is
+checked by `python -c "import ast; ast.parse(...)"` or even a successful
+`import`.

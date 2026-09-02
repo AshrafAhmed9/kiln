@@ -88,7 +88,26 @@ if __name__ == "__main__":
     parser.add_argument("--model-dir", type=Path, required=True)
     parser.add_argument("--prompt", default="Kiln checks its own math.")
     parser.add_argument("--prompts-file", type=Path)
+    parser.add_argument(
+        "--layer-diff-threshold", type=float, default=5e-2,
+        help="max acceptable per-layer hidden-state abs difference. This is looser "
+             "than the final-logit threshold on purpose: FP32-vs-BF16 rounding "
+             "compounds across depth (observed up to ~2.7e-2 on real checkpoints, "
+             "even though the final logit comparison stays ~1e-5) -- this catches "
+             "a real divergence, not normal accumulated rounding")
     arguments = parser.parse_args()
     prompts = ([line for line in arguments.prompts_file.read_text().splitlines() if line]
                if arguments.prompts_file else [arguments.prompt])
-    print(json.dumps(compare_prompts(arguments.model_dir, prompts), indent=2))
+    results = compare_prompts(arguments.model_dir, prompts)
+    print(json.dumps(results, indent=2))
+
+    failures = [r for r in results if not r["top1_matches"]
+                or r["max_layer_abs_diff"] > arguments.layer_diff_threshold]
+    if failures:
+        for r in failures:
+            print(f"FAIL: prompt={r['prompt']!r} top1_matches={r['top1_matches']} "
+                  f"max_layer_abs_diff={r['max_layer_abs_diff']:.2e} "
+                  f"(threshold={arguments.layer_diff_threshold:.2e})")
+        raise SystemExit(1)
+    print(f"PASS: {len(results)}/{len(results)} prompts within per-layer threshold "
+          f"{arguments.layer_diff_threshold:.2e}")

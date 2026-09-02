@@ -111,6 +111,9 @@ class Scheduler:
         than silently stuck (the same "reject clearly instead of hanging
         forever" idea used elsewhere in the project's auth work).
         """
+        if max_new_tokens <= 0:
+            raise ValueError("max_new_tokens must be positive")
+
         request = Request(
             request_id=next(self._next_id),
             prompt_tokens=list(prompt_tokens),

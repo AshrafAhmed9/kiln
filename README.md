@@ -1,261 +1,195 @@
 # Kiln
 
-Kiln is an LLM serving engine built from scratch — the same kind of
-system that runs behind a chat product, but written by hand instead of
-imported. Python handles the traffic (requests, scheduling, accounts);
-C++ does the actual thinking (reading the model's weights, running the
-math, remembering the conversation). Every piece is checked against a
-reference implementation before it's trusted, and every shortcut this
-project takes is written down plainly, not hidden.
+Kiln is an LLM inference engine built from scratch: point it at a model's
+raw weights and it serves chat-style requests — many at once, remembering
+what it's already read, with the option to shrink the model for speed.
+Python handles traffic and scheduling; C++/CUDA does the actual math. Every
+component is checked against a reference implementation before it's
+trusted, and every limitation is written down rather than hidden.
 
-**One sentence:** point Kiln at a model's raw weights, and it serves
-chat-style requests — many at once, remembering what it's already read,
-with the option to shrink the model down for speed — the way a real,
-production LLM server works, minus the parts that need a rented GPU or a
-real audience to build honestly.
-
-## The delta table
-
-Every row below is a real, reproducible measurement from
-`bench/run_benchmarks.py` — run it yourself with `PYTHONPATH=.
-python3 bench/run_benchmarks.py`. There is no GPU in this environment, so
-this all runs on CPU against a small, **randomly-initialized (untrained)**
-model — real numbers, honest hardware, not the production claim. The
-metric used per row is whichever one that optimization actually changes;
-forcing every row into the same column would be less honest, not more
-rigorous.
-
-| Optimization | What it actually changes | Measured result |
-|---|---|---|
-| Naive (recompute every step) | decode throughput | **254.7 tok/s** |
-| + KV cache | decode throughput | **2,843 tok/s** (**11.2×**) |
-| + KV cache (representative path) | TTFT / TPOT, p50 / p99, n=20 trials | TTFT 2.14 / 2.47 ms · TPOT 0.28 / 0.31 ms |
-| + continuous batching | wall-clock time, mixed-length workload (6 requests) | **1.42×** faster than static batching |
-| + paged KV cache | max concurrent sequences at fixed memory | contiguous **4** → paged **21** → paged+shared-prefix **62** |
-| + INT8 quantization | memory footprint · reconstruction error | **3.76×** smaller · MSE **3.5×10⁻⁵** (CPU speed *not* faster — no INT8 kernel; see below) |
-| + speculative decoding | target-model calls per token | **1.0×** call reduction here (see below) · **exact**: seeded output token-for-token identical to greedy decoding, proven by the rejection-sampling construction, not measured by luck |
-
-The paged-cache sharing path also has a separate seeded workload:
-`cmake --build build --target kiln_prefix_cache_benchmark &&
-./build/kiln_prefix_cache_benchmark`. It ran 80 synthetic conversations
-with a shared system prompt and four prompt variants, and measured **248
-hits in 252 prefix-block lookups (98.41%)**. This is a local, synthetic
-cache-mechanism measurement -- not a rate from real users or real traffic.
-
-**Two rows that need explaining, not hiding:**
-
-- **INT8 shows no CPU speedup.** The memory reduction and the accuracy
-  cost are real, measured numbers. The *speed* win real INT8 quantization
-  provides comes from an INT8 GPU kernel — this project's Phase 7 FP32
-  kernels have compiled and passed CPU-vs-GPU correctness tests on a Kaggle
-  P100, but there is no INT8 GPU kernel or performance measurement yet.
-  Reporting a CPU number as if it
-  demonstrated the GPU win would be the fabrication this project
-  specifically refuses to do.
-- **Speculative decoding's call-reduction number is 1.0× (zero) here, and
-  that's the correct, honest result for this specific draft/target
-  pairing — not a claim that the mechanism doesn't work.** Its speed
-  payoff depends entirely on the draft model's guesses actually landing,
-  and two independently, randomly-initialized models have essentially no
-  reason to agree (about a 1-in-1000 chance per token, at this toy
-  vocabulary size). What *is* proven, independent of which models are
-  paired: the rejection-sampling acceptance rule makes the output
-  distribution exact by construction, and the test checks this directly —
-  seeded speculative decoding produces token-for-token identical output to
-  seeded greedy decoding, every time. The two claims are separate on
-  purpose: "does it change your answer" (no, proven) and "does it make
-  this particular pairing faster" (not with two random models, and that's
-  expected, not a bug).
-
-See `BENCHMARKS.md` for the full per-phase history and `BENCHMARK.md` for
-the roofline / arithmetic-intensity analysis of why decode and prefill
-behave so differently in the first place.
-
-## What actually works right now
-
-Kiln can load a model, turn text into the numbers it understands and
-back, generate new text one word at a time while remembering everything
-it's already read, serve several people at once fairly, and answer over
-a normal web API that other tools (like the `openai` Python package)
-already know how to talk to. On top of that: a memory system that shares
-identical prompts between conversations instead of storing them twice; a
-way to shrink the model's numbers down for less memory use; and a proven
-(not just claimed) trick for generating text faster using a second,
-smaller model as a scout.
-
-**What doesn't work yet, and why, in one line each:** the raw CUDA kernels
-now compile and pass small CPU-vs-GPU correctness tests on Kaggle P100 and
-T4 GPUs; the T4 run also gives a narrow raw-CUDA-vs-Triton RoPE benchmark.
-A device-resident CUDA prefill and cached-decode path have also matched the
-CPU model's complete logits on a T4. Tensor parallelism is tested against the
-real model's own weights, but as a single-process simulation of sharded
-ranks, not distributed across actual separate GPUs -- no multi-GPU machine
-has been available to run it on real hardware. Nsight profiling and a
-measured real-hardware INT8-vs-FP32 GEMM speedup both remain blocked
-specifically on GPU access: Kaggle blocks performance counters outright, its
-free sessions land on a P100 one minor compute-capability version below
-what INT8 tensor cores require, and eleven separate attempts at a GCP GPU VM
-across as many zones all failed with `ZONE_RESOURCE_POOL_EXHAUSTED` before
-creating anything billable. Two real Llama-family
-checkpoints have now passed a full 10-prompt final-logit comparison each
-(details below), but per-layer parity is available through a debug-only
-capture path rather than checked by default, and the named 10,000-string
-tokenizer fixture is conformant on both checkpoints' tokenizers. And
-nobody has actually used this — there's no live website, no real users, no
-incident that ever happened — because that would take an actual public
-launch, which is a decision for later, not something to fake. Every one of
-these is written down in detail, not glossed over — see **Honest status**
-below.
+This is a from-scratch learning project, not a production system — the
+point was to build and understand every layer of an inference stack that
+normally comes pre-packaged (vLLM, TensorRT-LLM, llama.cpp), and to prove
+each piece works instead of assuming it does.
 
 ## How it fits together
 
 ```mermaid
 flowchart TD
-    client["A client<br/>(curl, the openai package, a browser)"]
+    U["Client<br/>(curl, the openai package, a browser)"]
 
-    subgraph py ["Python — decides what happens"]
-        API["Web API<br/>(OpenAI-shaped requests)"]
-        SCHED["Scheduler<br/>(who gets to run right now)"]
+    subgraph FRONT[" Python — decides who runs next "]
+        API["Web API<br/>OpenAI-compatible"]
+        SCHED["Scheduler<br/>continuous batching"]
     end
 
-    subgraph cpp ["C++ — does the actual thinking"]
-        MODEL["The model itself<br/>(reads weights, runs the math)"]
-        MEM["Memory<br/>(remembers the conversation so far)"]
+    subgraph BRAIN[" C++ / CUDA — does the actual math "]
+        MODEL["Model<br/>load weights, tokenize, forward pass"]
+        MEM["KV cache<br/>paged + shared-prefix"]
     end
 
-    subgraph verify ["Verification — checks the other two boxes, not itself the request path"]
-        PARITY["Parity harness<br/>(logits vs. a real HF reference)"]
-        REGRESS["Regression gate<br/>(bootstrap CI on paired scores)"]
-        JUDGE["LLM-as-judge + drift detection<br/>(open-ended scoring, shift-over-time)"]
+    subgraph PROOF[" Verification — offline, never on the request path "]
+        PARITY["Parity harness<br/>vs. real Hugging Face logits"]
+        REGRESS["Regression gate<br/>bootstrap CI on paired scores"]
+        JUDGE["LLM-as-judge + drift detection"]
     end
 
-    client --> API --> SCHED --> MODEL
+    U --> API --> SCHED --> MODEL
     MODEL <--> MEM
-    MODEL -.->|checked against| PARITY
-    PARITY -.-> REGRESS
-    REGRESS -.-> JUDGE
+    MODEL -.->|checked against| PARITY --> REGRESS --> JUDGE
 ```
 
-**Why split it this way?** Deciding *who gets to talk to the model next*
-is a policy question — it doesn't need to be fast, it needs to be easy to
-get right and easy to change. Actually *running* the model is a raw-speed
-question. Keeping those two concerns in two different languages, talking
-through one narrow, well-defined bridge, is exactly how real production
-engines (the ones this project is modeled on) are built — it's not a
-compromise, it's the standard shape of the thing.
+The split is deliberate, not a compromise: deciding *who runs next* is a
+policy question (needs to be easy to get right, not fast), while *running
+the model* is a raw-speed question. That's the same Python-front /
+C++-back split PyTorch, vLLM, and TensorRT-LLM actually use. The
+verification plane sits outside the request path on purpose — it's what
+turns every number below from "trust me" into "here's the diff."
 
-The verification plane sits outside that request path on purpose: it
-never runs on the hot path, and it's what turns every claim in the delta
-table below from "trust me" into "here's the diff." The parity harness
-checks the C++ compute layer against a real Hugging Face reference; the
-regression gate and drift detector check whether a *change* to either
-side made things measurably better, worse, or just noisier.
+## What it can do
 
-## The big picture (what each piece is for)
+- Load a model's raw weights and run a real forward pass (attention,
+  RMSNorm, SwiGLU, RoPE), written from scratch and checked against a real
+  Hugging Face model, not just against itself.
+- Cache what it's already computed instead of redoing it every token, with
+  a paged allocator and copy-on-write sharing so identical prompt prefixes
+  across conversations share one copy of memory.
+- Serve several conversations at once with continuous batching — new
+  requests join and finished ones leave without anyone waiting on the
+  slowest one in the batch.
+- Shrink the model's weights (INT8/INT4) for less memory, with the
+  accuracy cost measured against an independent reference quantizer, not
+  assumed.
+- Speed up generation with speculative decoding (a small model guesses
+  ahead, the real model checks the guesses in one pass) — proven, not just
+  claimed, to produce token-for-token identical output to plain greedy
+  decoding.
+- Serve all of the above over an OpenAI-compatible HTTP API, so existing
+  tools work against it unmodified.
 
-- **Reading a model's weights and turning text into numbers.** A model
-  file is opened without copying it into memory twice, and a sentence is
-  turned into a list of numbers (and back) the same way real tokenizers
-  do it.
-- **The forward pass.** The actual "thinking" — read the conversation so
-  far, decide what matters, produce a guess at the next word. Written
-  from scratch, checked piece by piece.
-- **Remembering the conversation (the cache).** Redoing all that thinking
-  for every single new word would be wasteful — the cache remembers what
-  was already computed, and a second, more advanced version shares
-  identical prompts between separate conversations instead of storing
-  them twice.
-- **Serving many people at once.** New conversations join in and
-  finished ones leave immediately, instead of everyone waiting for the
-  slowest conversation in the batch to finish before anyone new can
-  start.
-- **Shrinking the model down (quantization).** Trading a little precision
-  in the model's numbers for a lot less memory — with the accuracy cost
-  measured, not assumed.
-- **A faster way to generate text (speculative decoding).** A smaller,
-  faster model guesses several words ahead; the real model checks all the
-  guesses in one pass. Proven — not just claimed — to produce the exact
-  same answer as not using the shortcut at all.
-- **Checking whether a change made things better or worse.** Infrastructure
-  for comparing two versions honestly, using statistics that can tell a
-  real improvement apart from random noise — including an LLM-as-judge
-  scorer for open-ended answers and drift detection for a stream of scores
-  drifting away from a baseline.
+## Measured results
 
-## What each piece is actually made of (for anyone reading the code)
+Every row is real and reproducible: `PYTHONPATH=. python3 bench/run_benchmarks.py`.
+There's no GPU in this dev environment, so these numbers run on CPU against
+a small, **randomly-initialized (untrained)** model — honest hardware, not
+a production claim.
 
-| Piece | Where | What it's built from |
+| Optimization | Metric | Result |
 |---|---|---|
-| Reading model weights | `csrc/loader/` | opens the file without copying it, reads a small directory describing where each number lives |
-| Turning text into numbers | `csrc/tokenizer/` | the standard "merge common pairs of letters together" approach real tokenizers use |
-| The forward pass | `csrc/executor/` | matrix multiplication, a normalizing step, the "attention" mechanism, and a small decision-making network — chained together |
-| Remembering the conversation | `csrc/kv/` | a straightforward version, and an advanced version that shares memory between conversations and only copies it the moment two conversations actually diverge |
-| Choosing the next word | `csrc/executor/sampler.*` | always picking the best guess, or picking with some controlled randomness |
-| Shrinking the model | `csrc/quant/` | representing many numbers with one shared "how big are these, roughly" value plus small individual differences |
-| Deciding who runs next | `kiln_py/scheduler/` | a waiting line and a running list, moving people between them as room opens up |
-| The faster generation trick | `kiln_py/runtime/speculative_decode.py` | a small model guesses, a big model checks all the guesses in one go |
-| The web API | `kiln_py/api/` | matches the shape of OpenAI's own API, so existing tools work against it unmodified |
+| Naive (recompute every step) | decode throughput | 254.7 tok/s |
+| + KV cache | decode throughput | 2,843 tok/s (**11.2×**) |
+| + continuous batching | wall-clock, mixed workload | **1.42×** faster than static batching |
+| + paged KV cache | max concurrent sequences, fixed memory | 4 → 21 → 62 (contiguous → paged → paged+shared-prefix) |
+| + INT8 quantization | memory · reconstruction error | **3.76×** smaller · MSE 3.5×10⁻⁵ |
+| + speculative decoding | output correctness | **exact**: token-for-token identical to greedy decoding, by construction |
 
-## Honest status
+Two rows worth a real explanation instead of a footnote: INT8 shows no CPU
+speedup because the *speed* win comes from an INT8 GPU kernel — that kernel
+passes correctness tests on CPU-vs-GPU and now has a real, GPU-measured
+speed number too (**1.60×**, see below), just not one that belongs in a
+CPU-only table. Speculative decoding's call-reduction is 1.0× here because the
+draft and target are both randomly-initialized — two random models rarely
+agree — but the thing that's actually proven (exact output equivalence,
+by construction of the rejection-sampling rule) doesn't depend on that.
 
-Every claim above has a receipt. `docs/walkthrough.md` has the full,
-plain-language tour; `docs/defense.md` explains, phase by phase, what was
-built and exactly what it cost; `docs/correctness.md` is a running list
-of real bugs this project found in itself (and how); `BENCHMARKS.md` has
-the itemized, nothing-hidden list of what's actually been measured versus
-what's honestly still missing; `docs/interview-prep.md` has the prepared
-answers to the specific questions this project invites. Nothing here
-claims more than what was actually run and checked.
+The paged-cache sharing path also has its own seeded benchmark:
+`cmake --build build --target kiln_prefix_cache_benchmark && ./build/kiln_prefix_cache_benchmark`
+— 80 synthetic conversations sharing a system prompt, **248/252 prefix-block
+lookups hit (98.4%)**.
 
-CPU-only reference checks now exist against two real, structurally different
-Llama-family checkpoints: `HuggingFaceTB/SmolLM2-135M-Instruct` and
-`HuggingFaceTB/SmolLM2-360M-Instruct` (different hidden size, depth, and
-grouped-query-attention ratio). All 10 prompts in
-`tools/fixtures/hf_parity_prompts.txt` (short/long sequences, Unicode,
-punctuation) produce matching top-1 next-token IDs between Hugging Face FP32
-and Kiln on both checkpoints, with final-logit differences in the low
-10⁻⁵ range (worst case **6.63×10⁻⁵** on the 135M model, **5.07×10⁻⁵** on the
-360M model). This is two checkpoints and ten prompts each, not a complete
-parity proof across every checkpoint and input that exists. Run it after
-`pip install -e '.[oracle]'` with `PYTHONPATH=. python tools/hf_parity.py
---model-dir PATH --prompts-file tools/fixtures/hf_parity_prompts.txt`.
+Real-model correctness: two structurally different Llama-family checkpoints
+(`SmolLM2-135M-Instruct`, `SmolLM2-360M-Instruct` — different depth and
+GQA ratio) each pass a full 10-prompt final-logit comparison against Hugging
+Face, worst-case difference ~6×10⁻⁵ (FP32-vs-BF16 rounding, not a real
+divergence). Run it: `pip install -e '.[oracle]'` then
+`PYTHONPATH=. python tools/hf_parity.py --model-dir PATH --prompts-file tools/fixtures/hf_parity_prompts.txt`.
 
-As of this writing: the checked-in suites include the C++ tests (including
-memory-safety tooling, and 61/61 on a real Kaggle GPU with `KILN_BUILD_CUDA`
-on) and the Python API tests. The whole thing has also been built and run
-inside a real Docker container.
+Real GPU numbers, from a real NVIDIA GPU (GeForce GTX 1660 Ti Mobile,
+compute capability 7.5) after Kaggle (blocks performance counters outright)
+and eleven+ GCP attempts (quota, then zone exhaustion, then four repeated
+preemptions) all failed to produce them: **INT8-vs-FP32 GEMM speedup —
+1.60×**, measured directly (`fp32_median_ms=0.488616 int8_median_ms=0.305316`,
+`kiln_int8_gemm_cuda_benchmark`) — lower than a datacenter GPU with
+dedicated INT8 tensor cores would show, since this consumer Turing part
+accelerates INT8 via DP4A instructions, not tensor cores, and that's
+reported as measured, not adjusted upward. **Nsight Compute profiling** of
+all 33 kernel launches in a real prefill pass: every kernel's Compute and
+Memory Throughput sit under ~3.5%, and Nsight's own launch-statistics
+warning names why directly — *"This kernel grid is too small to fill the
+available resources on this device... 0.0 full waves across all SMs"* —
+an honest, expected result for a correctness-test-sized (3-token) fixture:
+launch-overhead-bound, not compute-bound. Full writeup:
+`docs/defense.md`, Phase 30.
+
+## What's not done, and why
+
+- **Tensor parallelism is a single-process simulation** of sharded ranks,
+  tested against real model weights, but never run across actual separate
+  GPUs — no multi-GPU machine has been available.
+- **Per-layer parity** is now a real pass/fail check, not just a printed
+  number: `tools/hf_parity.py` fails loudly (nonzero exit) if any layer's
+  hidden-state difference from Hugging Face exceeds a threshold. That
+  threshold is looser than the final-logit one on purpose — FP32-vs-BF16
+  rounding compounds across depth (observed up to ~2.7×10⁻² even though the
+  final logit stays ~10⁻⁵) — and both checkpoints pass it.
+- **No live deployment, no real users, no real incident.** Deliberately
+  never simulated — faking a launch story would be the one dishonest thing
+  this project could do to look more finished than it is.
+
+## What it's made of
+
+| Piece | Where | Built from |
+|---|---|---|
+| Load model weights | `csrc/loader/` | memory-mapped read, small header describing tensor layout |
+| Tokenizer | `csrc/tokenizer/` | byte-pair encoding, same approach real tokenizers use |
+| Forward pass | `csrc/executor/` | GEMM (via cuBLAS), RMSNorm, attention, SwiGLU — hand-written, chained |
+| KV cache | `csrc/kv/` | contiguous version, plus a paged + copy-on-write shared-prefix version |
+| Sampling | `csrc/executor/sampler.*` | greedy argmax, or temperature/top-p |
+| Quantization | `csrc/quant/` | per-block scale + INT8/INT4 values |
+| Scheduler | `kiln_py/scheduler/` | continuous batching (Orca-style) |
+| Speculative decoding | `kiln_py/runtime/speculative_decode.py` | small draft model, checked in one pass by the real model |
+| Web API | `kiln_py/api/` | OpenAI-compatible request/response shapes |
+
+CUDA specifics, precisely: attention, RMSNorm, and the sampler are
+hand-written raw CUDA using warp-shuffle reductions. RoPE exists in both
+raw CUDA and Triton, specifically to have a measured answer for "why not
+Triton for everything." GEMM goes through cuBLAS deliberately — beating it
+by hand is a multi-year compiler project, not a useful place to spend time.
 
 ## Try it
 
-```
-pip install -e .                                          # builds the C++ side
-cmake -B build -G Ninja && cmake --build build             # or, to just run the C++ tests directly
-ctest --test-dir build --output-on-failure
-PYTHONPATH=. python3 -m pytest tests/py                     # the Python side
+```bash
+brew install cmake ninja nlohmann-json icu4c pybind11   # macOS build deps
 
-bash demo.sh                                                # the full five-minute tour
+pip install -e .                                          # builds the C++ side
+cmake -B build -G Ninja && cmake --build build             # or build the C++ side directly
+ctest --test-dir build --output-on-failure
+PYTHONPATH=. python3 -m pytest tests/py                     # Python side
+
+bash demo.sh                                                # full five-minute tour
 ```
 
 Then `curl http://localhost:8420/v1/completions -d '{"prompt": "hi", "max_tokens": 8}'`
-against the running API, or read `docs/writeups/` for three longer
-explanations of the most interesting parts (the shared-memory conversation
-cache, the "how do we know it's still right" testing philosophy, and what
-shrinking a model actually costs).
+against the running API.
 
 ## Where things live
 
 ```
-csrc/            the C++/CUDA side — everything that does the actual math
-kiln_py/         the Python side — requests, scheduling, accounts, the web API
-tests/           cpp/ (GoogleTest) and py/ (pytest)
-tools/           the reference-model comparison script, a quantizer cross-check
-docs/            adr/ (why each big decision was made), learning/ (derivations,
-                 phase by phase), writeups/ (the longer explanations),
-                 walkthrough.md, defense.md, correctness.md, postmortems/
+csrc/            C++/CUDA — the actual math
+kiln_py/         Python — requests, scheduling, accounts, the web API
+tests/           cpp/ (GoogleTest), py/ (pytest)
+tools/           reference-model comparison script, quantizer cross-check
+docs/            adr/ (why each decision), learning/ (derivations, phase by
+                 phase), writeups/ (longer explanations), walkthrough.md,
+                 defense.md (what was built + what it cost, per phase),
+                 correctness.md (real bugs found and how), postmortems/
 deploy/          Dockerfile, docker-compose (engine + Prometheus + Grafana)
-demo.sh          the scripted end-to-end tour
+demo.sh          scripted end-to-end tour
 ```
 
-The project's own phase-by-phase record — what was built, why, and what
-it cost — lives in `docs/defense.md`, `docs/correctness.md`, and
-`docs/learning/`.
+For more detail: `docs/walkthrough.md` is the full plain-language tour,
+`docs/defense.md` is the phase-by-phase build log with exact costs,
+`docs/correctness.md` is a running list of real bugs this project found in
+itself, and `docs/writeups/` has longer explanations of the three most
+interesting parts (the shared-memory cache, the testing philosophy, and
+what quantization actually costs).

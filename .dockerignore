@@ -1,0 +1,13 @@
+.git
+.claude
+graphify-out
+build
+build-*
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.venv*
+*.so
+*.dylib
+.DS_Store

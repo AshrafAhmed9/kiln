@@ -32,10 +32,9 @@ class CompletionBatchService:
 
     def complete(self, prompt: str, max_new_tokens: int, sampler_config,
                  seed: int) -> str:
-        request = self._submit(prompt, max_new_tokens, sampler_config, seed)
         waiter = threading.Event()
-        with self._condition:
-            self._waiters[request.request_id] = waiter
+        request = self._submit(prompt, max_new_tokens, sampler_config, seed,
+                               waiter=waiter)
         waiter.wait()
         with self._condition:
             if request.request_id in self._failed:
@@ -62,13 +61,16 @@ class CompletionBatchService:
             self.cancel(request.request_id)
 
     def _submit(self, prompt: str, max_new_tokens: int, sampler_config,
-                seed: int, stream: Queue[int | BaseException | None] | None = None) -> Request:
+                seed: int, stream: Queue[int | BaseException | None] | None = None,
+                waiter: threading.Event | None = None) -> Request:
         prompt_tokens = self._tokenizer.encode(prompt)
         with self._condition:
             request = self._scheduler.submit(prompt_tokens, max_new_tokens)
             if request.state is RequestState.REJECTED:
                 raise ValueError("request exceeds the scheduler's KV-cache budget")
             self._executor.register(request, sampler_config, seed)
+            if waiter is not None:
+                self._waiters[request.request_id] = waiter
             if stream is not None:
                 self._streams[request.request_id] = stream
             self._condition.notify()

@@ -23,7 +23,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from kiln_py.metrics import (
     completion_latency_seconds,
@@ -76,7 +76,7 @@ _completion_batches = CompletionBatchService(
 class CompletionRequest(BaseModel):
     model: str = _MODEL_NAME
     prompt: str
-    max_tokens: int = 16
+    max_tokens: int = Field(default=16, gt=0)
     temperature: float = 1.0
     top_p: float = 1.0
     top_k: int = 0
@@ -158,5 +158,4 @@ def healthz():
 @app.get("/metrics")
 def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
-
 

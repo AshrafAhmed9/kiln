@@ -53,6 +53,14 @@ def test_completion_returns_openai_shaped_response():
     assert isinstance(body["choices"][0]["text"], str)
 
 
+def test_completion_rejects_nonpositive_max_tokens():
+    for max_tokens in (0, -1):
+        response = client.post("/v1/completions", json={
+            "prompt": "invalid length", "max_tokens": max_tokens,
+        })
+        assert response.status_code == 422
+
+
 def test_concurrent_non_streaming_completions_use_the_scheduler_path():
     def complete(prompt: str):
         return client.post("/v1/completions", json={

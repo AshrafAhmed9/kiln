@@ -633,3 +633,89 @@ the direct payoff of not writing a new attention kernel. No throughput
 benchmark exists yet for padded-vs-ragged (the claim is correctness and real
 API wiring, not a measured speedup), and each sequence still uses its own
 contiguous `KVCache` -- Phase 8's paged prefix sharing isn't part of this path.
+
+## Phase 29 — Per-layer parity becomes a real check, not a printed number
+
+**What:** `tools/hf_parity.py` already computed a per-layer hidden-state
+difference against a real Hugging Face reference on every run (via
+`Model::forward_hidden_states`), but nothing ever looked at the number --
+it just sat in the printed JSON. Added a `--layer-diff-threshold` flag
+(default `5e-2`) and a real pass/fail: the script now exits nonzero and
+prints which prompts failed if any layer's difference from the reference
+exceeds it.
+
+**Why the threshold is 5e-2, not something tighter:** the final-logit
+comparison (Phase 22/28) holds to ~10⁻⁵ on both checkpoints, but per-layer
+hidden-state differences compound across depth -- FP32-vs-BF16 rounding
+in one layer feeds into the next layer's computation instead of being
+independent each time. Measured directly on both checkpoints: the worst
+per-layer difference was ~2.7×10⁻² (135M) while the worst final-logit
+difference stayed ~6×10⁻⁵. A threshold at final-logit precision would fail
+every real run for a reason that isn't a bug; 5e-2 is set from the actual
+observed accumulation, not picked arbitrarily.
+
+**What it cost:** zero new numerical code -- the per-layer diffing already
+existed. The only work was picking a threshold grounded in a real
+measurement instead of a guess, and running it against both cached
+checkpoints (`SmolLM2-135M-Instruct`, `SmolLM2-360M-Instruct`) to confirm
+both pass: 10/10 prompts each. No GPU needed for this phase.
+
+## Phase 30 -- Real GPU numbers: INT8 GEMM speedup and Nsight Compute profiling
+
+**What was blocked, and why:** two numbers had been missing since Phase 7 --
+a real INT8-vs-FP32 GEMM speedup measured on GPU hardware, and Nsight
+Compute profiler output for the model's own CUDA kernels. Kaggle blocks
+Nsight structurally (its shared, multi-tenant notebooks don't grant the
+performance-counter access `ncu` requires, regardless of GPU). Eleven+
+attempts at a GCP GPU VM across many zones and two GPU types hit either a
+`GPUS_ALL_REGIONS` quota of 0 (fixed after a support request) or, once
+that was fixed, `ZONE_RESOURCE_POOL_EXHAUSTED` / preemption every time --
+a preemptible T4 in `us-central1-b` got reclaimed four separate times
+mid-build, once after finally clearing a real `nvcc`/GCC host-compiler
+incompatibility (CUDA 11.5's frontend fails to parse Ubuntu 22.04's
+patched `std_function.h` under GCC 11.4, not just under GCC 12 as first
+suspected).
+
+**What actually closed it:** a personal machine with a real NVIDIA GPU
+(GeForce GTX 1660 Ti Mobile, Turing, compute capability 7.5 -- the same
+generation as a T4, but a DP4A-based consumer part with no dedicated INT8
+tensor cores). CUDA 12.0 was already installed; the only real snag was
+the same class of host-compiler mismatch seen on GCP (Ubuntu 24.04 ships
+GCC 13 by default, and CUDA 12.0 only supports up to GCC 12) -- fixed by
+installing `g++-12`/`gcc-12` alongside the system default and passing
+`-DCMAKE_CUDA_HOST_COMPILER=/usr/bin/g++-12` to the CMake configure step,
+rather than touching the system's default compiler.
+
+**The INT8 GEMM number:** `kiln_int8_gemm_cuda_benchmark`, run for real on
+that hardware: `rows=512 k=576 n=1536 fp32_median_ms=0.488616
+int8_median_ms=0.305316 speedup=1.600360` -- **1.60x**, INT8 vs. FP32, on
+real silicon. Lower than a datacenter GPU with dedicated INT8 tensor cores
+would show (this consumer Turing part accelerates INT8 via DP4A dot-product
+instructions, not tensor cores) -- reported exactly as measured, not
+adjusted to look better.
+
+**The Nsight Compute output:** `ncu --set default` (this Nsight Compute
+version, 2022.4.1, uses the identifier `default` where a newer version
+would use `basic` -- the first attempt with `--set basic` silently
+collected nothing and printed `No metrics to collect found in sections.`,
+which is itself a small, worth-naming gotcha) against
+`CudaModel.FullPrefillMatchesCpuReference`, all 33 kernel launches across
+a 3-token prefill. Every kernel showed Compute (SM) Throughput and Memory
+Throughput both under ~3.5%, and Nsight's own launch-statistics warning
+flagged it directly: *"This kernel grid is too small to fill the available
+resources on this device, resulting in only 0.0 full waves across all
+SMs."* Example, `AttentionKernel`: Duration 3.81us, Elapsed Cycles 4,909,
+Compute Throughput 0.90%, Memory Throughput 3.43%. This is an honest,
+expected result for a correctness-test-sized fixture (3 tokens), not a
+disappointing one -- it's launch-overhead-bound, not compute-bound, which
+is precisely the mechanism this project's own answer to "why isn't
+everything in C++" already describes: per-iteration overhead is real, but
+it isn't a per-token compute cost.
+
+**What it cost:** real time chasing infrastructure (GCP quota, zone
+capacity, preemption, two separate nvcc/GCC version incompatibilities)
+rather than code -- once on hardware that actually stayed up, both numbers
+came out cleanly on the first real attempt, and the CUDA test suite passed
+67/67 on real physical hardware for the first time in this project's
+history (the earlier 61/61 CPU-only and Kaggle-remote runs never included
+a locally-run, root-accessible GPU).

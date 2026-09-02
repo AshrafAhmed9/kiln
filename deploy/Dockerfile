@@ -1,7 +1,7 @@
 FROM python:3.11-slim AS build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    cmake ninja-build g++ nlohmann-json3-dev git \
+    cmake ninja-build g++ nlohmann-json3-dev libicu-dev git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir .
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libstdc++6 \
+    libstdc++6 libicu-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages

@@ -12,14 +12,15 @@ from kiln_py import _C
 from tools.hf_parity import config_from_hf
 
 
-def merge(model_dir: Path, adapter_dir: Path) -> _C.Model:
+def merge(model_dir: Path, adapter_dir: Path, model: _C.Model | None = None) -> _C.Model:
     manifest = json.loads((adapter_dir / "kiln-export.json").read_text())
     if manifest["target"] != "q_proj" or manifest["kiln_matrix"] != "wq":
         raise ValueError("this minimal bridge accepts only q_proj -> wq adapters")
     tensors = load_file(adapter_dir / "adapter_model.safetensors")
-    model = _C.Model.load_from_safetensors(
-        config_from_hf(model_dir / "config.json"), str(model_dir / "model.safetensors")
-    )
+    if model is None:
+        model = _C.Model.load_from_safetensors(
+            config_from_hf(model_dir / "config.json"), str(model_dir / "model.safetensors")
+        )
     scale = float(manifest["scale"])
     for layer in range(model.config.n_layers):
         prefix = f"base_model.model.model.layers.{layer}.self_attn.q_proj"
@@ -40,7 +41,7 @@ if __name__ == "__main__":
         config_from_hf(args.model_dir / "config.json"), str(args.model_dir / "model.safetensors")
     )
     before = base.forward(tokens, 1, len(tokens), None, 0, None)[-1]
-    model = merge(args.model_dir, args.adapter_dir)
+    model = merge(args.model_dir, args.adapter_dir, base)
     logits = model.forward(tokens, 1, len(tokens), None, 0, None)[-1]
     print(json.dumps({"vocab_size": len(logits), "top_token": int(logits.argmax()),
                       "max_logit_change": float(np.abs(logits - before).max())}))

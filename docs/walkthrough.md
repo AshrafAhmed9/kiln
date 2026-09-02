@@ -94,9 +94,10 @@ underlying code is too clever and should be simplified first (ADR-010).
 under AddressSanitizer/UndefinedBehaviorSanitizer (60/60 total across both
 parts as of Phase 12 -- see `BENCHMARKS.md` for the exact count per part).
 The pybind11 boundary was verified end to end (Python calling the real
-C++ model, not a stub). The scheduler is not yet wired to the API for
-genuine concurrent multi-request continuous batching (the API currently
-drives the single-sequence generation loop directly).
+C++ model, not a stub). Normal and streaming API completions now go through
+the scheduler-backed continuous-batching worker; concurrent API tests cover
+that path. Prompt prefill is batched without padding, while each sequence
+still owns a contiguous KV cache rather than sharing paged prefix blocks.
 
 **Part II:** this machine has no NVIDIA GPU, but the raw CUDA kernels have
 been compiled and run remotely on Kaggle P100 and T4 GPUs, matching small CPU

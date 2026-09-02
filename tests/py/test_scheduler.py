@@ -44,6 +44,14 @@ def test_request_too_big_to_ever_fit_is_rejected_immediately():
     assert request not in scheduler.running
 
 
+@pytest.mark.parametrize("max_new_tokens", [0, -1])
+def test_nonpositive_token_budget_is_rejected(max_new_tokens):
+    scheduler = Scheduler(max_batch_tokens=10, executor=fake_executor)
+
+    with pytest.raises(ValueError, match="must be positive"):
+        scheduler.submit(prompt_tokens=[1], max_new_tokens=max_new_tokens)
+
+
 def test_a_finishing_request_frees_room_for_a_waiting_one():
     scheduler = Scheduler(max_batch_tokens=6, executor=fake_executor)
     # This first request uses up the whole budget by itself (3 prompt + 3

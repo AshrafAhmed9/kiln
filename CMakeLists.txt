@@ -11,6 +11,26 @@ option(KILN_BUILD_CUDA "Build the CUDA kernel validation suite" OFF)
 set(KILN_CUDA_ARCHITECTURES "" CACHE STRING
     "CUDA compute capability, for example 75 for a T4 or 60 for a P100")
 
+# Apple's SDK includes a partial ICU header set.  When ICU comes from
+# Homebrew, prefer its complete headers so FindICU does not pair the SDK's
+# incomplete include directory with Homebrew's libraries.
+if(APPLE AND NOT ICU_INCLUDE_DIR)
+  find_program(HOMEBREW_EXECUTABLE brew)
+  if(HOMEBREW_EXECUTABLE)
+    execute_process(
+      COMMAND "${HOMEBREW_EXECUTABLE}" --prefix icu4c
+      RESULT_VARIABLE HOMEBREW_ICU_RESULT
+      OUTPUT_VARIABLE HOMEBREW_ICU_ROOT
+      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(HOMEBREW_ICU_RESULT EQUAL 0
+       AND EXISTS "${HOMEBREW_ICU_ROOT}/include/unicode/regex.h")
+      set(ICU_ROOT "${HOMEBREW_ICU_ROOT}" CACHE PATH "Homebrew ICU root")
+      set(ICU_INCLUDE_DIR "${HOMEBREW_ICU_ROOT}/include" CACHE PATH
+          "ICU include directory")
+    endif()
+  endif()
+endif()
+
 add_compile_options(-Wall -Wextra -Wpedantic)
 if(KILN_SANITIZE)
   add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
@@ -110,6 +130,7 @@ if(KILN_BUILD_PYBIND)
     FetchContent_Declare(
       pybind11
       URL https://github.com/pybind/pybind11/archive/refs/tags/v2.13.6.tar.gz
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     FetchContent_MakeAvailable(pybind11)
   endif()

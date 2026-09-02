@@ -9,6 +9,7 @@ kiln_py/_C*.so
 .mypy_cache/
 docs/interview-study-flowchart.md
 docs/interview-study-flowchart.html
+docs/interview-prep.md
 .pytest_cache/
 .venv-oracle/
 graphify-out/

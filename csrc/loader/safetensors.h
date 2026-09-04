@@ -46,7 +46,7 @@ class SafetensorsFile {
  private:
   SafetensorsFile() = default;
 
-  void* mapped_ = nullptr;   // mmap base address
+  void* mapped_ = nullptr;  // mmap base address
   size_t mapped_size_ = 0;
   std::unordered_map<std::string, TensorView> tensors_;
 };

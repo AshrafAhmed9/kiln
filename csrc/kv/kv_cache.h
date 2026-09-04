@@ -34,7 +34,8 @@ class KVCache {
   int64_t n_kv_heads_;
   int64_t head_dim_;
   int64_t length_ = 0;
-  std::vector<std::vector<float>> k_;  // k_[layer] is [max_seq_len, n_kv_heads*head_dim]
+  std::vector<std::vector<float>>
+      k_;  // k_[layer] is [max_seq_len, n_kv_heads*head_dim]
   std::vector<std::vector<float>> v_;
 };
 

@@ -1,11 +1,11 @@
 #include "kv/prefix_cache_measurement.h"
 
-#include "kv/paged_kv_cache.h"
-
 #include <array>
 #include <memory>
 #include <random>
 #include <stdexcept>
+
+#include "kv/paged_kv_cache.h"
 
 namespace kiln {
 namespace {
@@ -45,8 +45,8 @@ PrefixCacheMeasurement MeasureSyntheticPrefixCacheWorkload(
       // partially filled variant block that later conversations can share.
       result.prefix_block_lookups += shared_system.block_table().size();
       result.prefix_block_hits += shared_system.block_table().size();
-      variants[variant] = std::make_unique<PagedSequence>(
-          PagedSequence::Fork(shared_system));
+      variants[variant] =
+          std::make_unique<PagedSequence>(PagedSequence::Fork(shared_system));
       AppendTokens(variants[variant].get(), /*count=*/4);
       ++result.prefix_block_lookups;
     }
@@ -61,7 +61,8 @@ PrefixCacheMeasurement MeasureSyntheticPrefixCacheWorkload(
     int64_t shared_block = request.block_table().back();
     int64_t divergent_tokens = 1 + static_cast<int64_t>(rng() % 4);
     AppendTokens(&request, divergent_tokens);
-    if (request.block_table().back() != shared_block) ++result.copy_on_write_events;
+    if (request.block_table().back() != shared_block)
+      ++result.copy_on_write_events;
     request.Release();
   }
 

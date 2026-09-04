@@ -23,7 +23,7 @@ void ApplyRope(float* x, const int64_t* positions, int64_t n_tokens,
         // reference model, which is exactly the kind of bug the parity
         // checks exist to catch.
         float freq = std::pow(theta, -2.0f * static_cast<float>(j) /
-                                          static_cast<float>(head_dim));
+                                         static_cast<float>(head_dim));
         float angle = pos * freq;
         float cos_a = std::cos(angle);
         float sin_a = std::sin(angle);

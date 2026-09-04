@@ -21,8 +21,7 @@ int32_t GreedyArgmax(const float* logits, int64_t vocab_size) {
 
 int32_t Sample(const float* logits, int64_t vocab_size,
                const SamplerConfig& config,
-               const std::vector<int32_t>& previous_tokens,
-               std::mt19937& rng) {
+               const std::vector<int32_t>& previous_tokens, std::mt19937& rng) {
   if (config.temperature <= 0.0f) return GreedyArgmax(logits, vocab_size);
 
   std::vector<float> scores(logits, logits + vocab_size);
@@ -35,7 +34,7 @@ int32_t Sample(const float* logits, int64_t vocab_size,
     for (int32_t used : previous_tokens) {
       float& s = scores[used];
       s = (s > 0.0f) ? s / config.repetition_penalty
-                      : s * config.repetition_penalty;
+                     : s * config.repetition_penalty;
     }
   }
 

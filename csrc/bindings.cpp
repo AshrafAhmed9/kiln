@@ -40,11 +40,10 @@ using ContiguousFloatArray =
 using ContiguousInt32Array =
     py::array_t<int32_t, py::array::c_style | py::array::forcecast>;
 
-py::array_t<float> ModelForward(const Model& model,
-                                 ContiguousInt32Array tokens,
-                                 int64_t batch_size, int64_t seq_len,
-                                 py::object valid_lengths, int64_t start_pos,
-                                 KVCache* cache) {
+py::array_t<float> ModelForward(const Model& model, ContiguousInt32Array tokens,
+                                int64_t batch_size, int64_t seq_len,
+                                py::object valid_lengths, int64_t start_pos,
+                                KVCache* cache) {
   auto tokens_buf = tokens.request();
   const int64_t* valid_ptr = nullptr;
   std::vector<int64_t> valid_storage;
@@ -60,33 +59,37 @@ py::array_t<float> ModelForward(const Model& model,
   return out;
 }
 
-py::list ModelForwardHiddenStates(const Model& model, ContiguousInt32Array tokens) {
+py::list ModelForwardHiddenStates(const Model& model,
+                                  ContiguousInt32Array tokens) {
   auto input = tokens.request();
   if (input.ndim != 1) throw std::invalid_argument("tokens must be 1D");
   std::vector<std::vector<float>> states;
   std::vector<float> logits(input.shape[0] * model.config().vocab_size);
-  model.Forward(static_cast<const int32_t*>(input.ptr), 1, input.shape[0], nullptr,
-                0, nullptr, logits.data(), &states);
+  model.Forward(static_cast<const int32_t*>(input.ptr), 1, input.shape[0],
+                nullptr, 0, nullptr, logits.data(), &states);
   py::list out;
   for (const auto& state : states) {
     py::array_t<float> array(
         std::vector<py::ssize_t>{input.shape[0], model.config().hidden_size});
-    std::memcpy(array.mutable_data(), state.data(), state.size() * sizeof(float));
+    std::memcpy(array.mutable_data(), state.data(),
+                state.size() * sizeof(float));
     out.append(std::move(array));
   }
   return out;
 }
 
 py::array_t<float> ModelForwardDecodeBatch(const Model& model,
-                                            ContiguousInt32Array tokens,
-                                            std::vector<int64_t> positions,
-                                            py::list caches) {
+                                           ContiguousInt32Array tokens,
+                                           std::vector<int64_t> positions,
+                                           py::list caches) {
   auto tokens_buf = tokens.request();
   int64_t batch_size = tokens_buf.shape[0];
-  if (tokens_buf.ndim != 1 || static_cast<int64_t>(positions.size()) != batch_size ||
+  if (tokens_buf.ndim != 1 ||
+      static_cast<int64_t>(positions.size()) != batch_size ||
       static_cast<int64_t>(py::len(caches)) != batch_size) {
     throw std::invalid_argument(
-        "forward_decode_batch expects equally sized 1D tokens, positions, and caches");
+        "forward_decode_batch expects equally sized 1D tokens, positions, and "
+        "caches");
   }
   std::vector<KVCache*> cache_ptrs;
   cache_ptrs.reserve(batch_size);
@@ -106,14 +109,16 @@ py::array_t<float> ModelForwardDecodeBatch(const Model& model,
 // call, C++ side does the real work through the exact same binding
 // pattern.
 py::array_t<float> ModelForwardPrefillBatch(const Model& model,
-                                             ContiguousInt32Array tokens,
-                                             std::vector<int64_t> seq_lengths,
-                                             py::list caches) {
+                                            ContiguousInt32Array tokens,
+                                            std::vector<int64_t> seq_lengths,
+                                            py::list caches) {
   auto tokens_buf = tokens.request();
   int64_t num_sequences = static_cast<int64_t>(seq_lengths.size());
-  if (tokens_buf.ndim != 1 || static_cast<int64_t>(py::len(caches)) != num_sequences) {
+  if (tokens_buf.ndim != 1 ||
+      static_cast<int64_t>(py::len(caches)) != num_sequences) {
     throw std::invalid_argument(
-        "forward_prefill_batch expects one seq_length and one cache per sequence");
+        "forward_prefill_batch expects one seq_length and one cache per "
+        "sequence");
   }
   int64_t total_tokens = 0;
   for (int64_t len : seq_lengths) total_tokens += len;
@@ -134,9 +139,8 @@ py::array_t<float> ModelForwardPrefillBatch(const Model& model,
   return out;
 }
 
-py::array_t<float> ModelForwardTensorParallelSimulated(const Model& model,
-                                                        ContiguousInt32Array tokens,
-                                                        int64_t world_size) {
+py::array_t<float> ModelForwardTensorParallelSimulated(
+    const Model& model, ContiguousInt32Array tokens, int64_t world_size) {
   auto input = tokens.request();
   if (input.ndim != 1) throw std::invalid_argument("tokens must be 1D");
   int64_t seq_len = input.shape[0];
@@ -154,12 +158,11 @@ void ModelMergeLoraIntoLayer(Model& model, int64_t layer_idx,
   auto a = lora_a.request();
   auto b = lora_b.request();
   if (a.ndim != 2 || b.ndim != 2 || a.shape[0] != b.shape[1]) {
-    throw std::invalid_argument("LoRA arrays must be A[rank, in] and B[out, rank]");
+    throw std::invalid_argument(
+        "LoRA arrays must be A[rank, in] and B[out, rank]");
   }
-  model.MergeLoraIntoLayer(layer_idx, which,
-                            static_cast<const float*>(a.ptr),
-                            static_cast<const float*>(b.ptr),
-                            a.shape[0], scale);
+  model.MergeLoraIntoLayer(layer_idx, which, static_cast<const float*>(a.ptr),
+                           static_cast<const float*>(b.ptr), a.shape[0], scale);
 }
 
 #ifdef KILN_BUILD_CUDA
@@ -198,9 +201,9 @@ py::bytes DecodeToBytes(const BpeTokenizer& tokenizer,
 }
 
 int32_t SampleFromLogits(ContiguousFloatArray logits,
-                          const SamplerConfig& config,
-                          const std::vector<int32_t>& previous_tokens,
-                          uint32_t seed) {
+                         const SamplerConfig& config,
+                         const std::vector<int32_t>& previous_tokens,
+                         uint32_t seed) {
   auto buf = logits.request();
   std::mt19937 rng(seed);
   return Sample(static_cast<const float*>(buf.ptr), buf.shape[0], config,
@@ -257,8 +260,8 @@ PYBIND11_MODULE(_C, m) {
       .def("forward_prefill_batch", &kiln::ModelForwardPrefillBatch,
            py::arg("tokens"), py::arg("seq_lengths"), py::arg("caches"))
       .def("forward_tensor_parallel_simulated",
-           &kiln::ModelForwardTensorParallelSimulated,
-           py::arg("tokens"), py::arg("world_size"))
+           &kiln::ModelForwardTensorParallelSimulated, py::arg("tokens"),
+           py::arg("world_size"))
       .def("merge_lora_into_layer", &kiln::ModelMergeLoraIntoLayer,
            py::arg("layer_idx"), py::arg("which"), py::arg("lora_a"),
            py::arg("lora_b"), py::arg("scale"))
@@ -267,18 +270,22 @@ PYBIND11_MODULE(_C, m) {
 #ifdef KILN_BUILD_CUDA
   py::class_<kiln::CudaModel>(m, "CudaModel")
       .def(py::init<const kiln::Model&>())
-      .def("forward", [](const kiln::CudaModel& model,
-                          kiln::ContiguousInt32Array tokens,
-                          int64_t start_pos) {
-        return kiln::CudaModelForward(model, std::move(tokens), start_pos,
-                                      /*use_cache=*/false);
-      }, py::arg("tokens"), py::arg("start_pos") = 0)
-      .def("forward_cached", [](const kiln::CudaModel& model,
-                                 kiln::ContiguousInt32Array tokens,
-                                 int64_t start_pos) {
-        return kiln::CudaModelForward(model, std::move(tokens), start_pos,
-                                      /*use_cache=*/true);
-      }, py::arg("tokens"), py::arg("start_pos"))
+      .def(
+          "forward",
+          [](const kiln::CudaModel& model, kiln::ContiguousInt32Array tokens,
+             int64_t start_pos) {
+            return kiln::CudaModelForward(model, std::move(tokens), start_pos,
+                                          /*use_cache=*/false);
+          },
+          py::arg("tokens"), py::arg("start_pos") = 0)
+      .def(
+          "forward_cached",
+          [](const kiln::CudaModel& model, kiln::ContiguousInt32Array tokens,
+             int64_t start_pos) {
+            return kiln::CudaModelForward(model, std::move(tokens), start_pos,
+                                          /*use_cache=*/true);
+          },
+          py::arg("tokens"), py::arg("start_pos"))
       .def("reset_cache", &kiln::CudaModel::ResetCache)
       .def_property_readonly("config", &kiln::CudaModel::config);
 #endif
@@ -294,10 +301,10 @@ PYBIND11_MODULE(_C, m) {
       .def_readwrite("top_k", &kiln::SamplerConfig::top_k)
       .def_readwrite("top_p", &kiln::SamplerConfig::top_p)
       .def_readwrite("repetition_penalty",
-                      &kiln::SamplerConfig::repetition_penalty);
+                     &kiln::SamplerConfig::repetition_penalty);
 
-  m.def("sample", &kiln::SampleFromLogits, py::arg("logits"),
-        py::arg("config"), py::arg("previous_tokens"), py::arg("seed"));
+  m.def("sample", &kiln::SampleFromLogits, py::arg("logits"), py::arg("config"),
+        py::arg("previous_tokens"), py::arg("seed"));
 
   py::class_<kiln::BpeTokenizer>(m, "BpeTokenizer")
       .def_static("load", &kiln::BpeTokenizer::Load)

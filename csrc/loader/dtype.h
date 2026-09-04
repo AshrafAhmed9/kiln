@@ -57,15 +57,15 @@ inline float F16ToF32(uint16_t bits) {
 // Converts one tensor's raw bytes to a freshly allocated FP32 buffer.
 // `out` must have space for `element_count` floats.
 inline void ConvertToF32(const TensorView& view, size_t element_count,
-                          float* out) {
+                         float* out) {
   if (view.dtype == DType::kF32) {
     std::memcpy(out, view.data, element_count * sizeof(float));
     return;
   }
   const auto* raw = reinterpret_cast<const uint16_t*>(view.data);
   for (size_t i = 0; i < element_count; ++i) {
-    out[i] = (view.dtype == DType::kBF16) ? BF16ToF32(raw[i])
-                                           : F16ToF32(raw[i]);
+    out[i] =
+        (view.dtype == DType::kBF16) ? BF16ToF32(raw[i]) : F16ToF32(raw[i]);
   }
 }
 

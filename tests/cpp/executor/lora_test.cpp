@@ -1,8 +1,8 @@
 #include "executor/lora.h"
 
-#include <stdexcept>
-
 #include <gtest/gtest.h>
+
+#include <stdexcept>
 
 #include "executor/model.h"
 
@@ -67,8 +67,9 @@ TEST(MergeLoraAdapter, ChangesModelOutputThroughARealForwardPass) {
 
   int64_t q_dim = config.n_heads * config.head_dim;  // 8
   int64_t rank = 2;
-  std::vector<float> lora_a(rank * config.hidden_size, 1.0f);  // [rank, hidden_size]
-  std::vector<float> lora_b(q_dim * rank, 1.0f);               // [q_dim, rank]
+  std::vector<float> lora_a(rank * config.hidden_size,
+                            1.0f);                // [rank, hidden_size]
+  std::vector<float> lora_b(q_dim * rank, 1.0f);  // [q_dim, rank]
   model.MergeLoraIntoLayer(/*layer_idx=*/0, "wq", lora_a.data(), lora_b.data(),
                            rank, /*scale=*/2.0f);
 
@@ -98,10 +99,9 @@ TEST(MergeLoraAdapter, UnknownMatrixNameThrows) {
   Model model = Model::LoadRandom(config, 1);
 
   std::vector<float> lora_a(4, 1.0f), lora_b(4, 1.0f);
-  EXPECT_THROW(
-      model.MergeLoraIntoLayer(0, "not_a_real_matrix", lora_a.data(),
-                               lora_b.data(), 1, 1.0f),
-      std::invalid_argument);
+  EXPECT_THROW(model.MergeLoraIntoLayer(0, "not_a_real_matrix", lora_a.data(),
+                                        lora_b.data(), 1, 1.0f),
+               std::invalid_argument);
 }
 
 }  // namespace

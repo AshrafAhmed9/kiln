@@ -56,8 +56,8 @@ class Model {
   // out_logits, sized [batch_size * seq_len, vocab_size], is filled for
   // every row including padding -- the caller decides which rows matter.
   void Forward(const int32_t* tokens, int64_t batch_size, int64_t seq_len,
-               const int64_t* valid_lengths, int64_t start_pos,
-               KVCache* cache, float* out_logits,
+               const int64_t* valid_lengths, int64_t start_pos, KVCache* cache,
+               float* out_logits,
                std::vector<std::vector<float>>* layer_outputs = nullptr) const;
 
   // Runs one cached decode token for every sequence in a batch. The matrix
@@ -84,20 +84,20 @@ class Model {
   // sum of seq_lengths -- the caller picks out whichever row(s) it wants
   // (usually just the last row of each sequence).
   void ForwardPrefillBatch(const int32_t* tokens, int64_t num_sequences,
-                           const int64_t* seq_lengths,
-                           KVCache* const* caches, float* out_logits) const;
+                           const int64_t* seq_lengths, KVCache* const* caches,
+                           float* out_logits) const;
 
   // Tensor-parallel forward pass, simulated across `world_size` ranks in
   // this one process -- the Megatron-style scheme ADR-012/Phase 12 already
-  // proved exact on synthetic matrices in kiln_py/runtime/tensor_parallel_sim.py,
-  // run here for real against this model's own weights. Attention is
-  // column-parallel (each rank owns a contiguous slice of the heads and
-  // computes attention for just those heads -- no communication needed,
-  // since one head's attention never depends on another head's numbers)
-  // and the output/down projections are row-parallel (each rank computes
-  // its own partial contribution to the full output; the ranks' partial
-  // sums are added together, standing in for the one real network
-  // all-reduce a multi-GPU run would need per block). Requires n_heads,
+  // proved exact on synthetic matrices in
+  // kiln_py/runtime/tensor_parallel_sim.py, run here for real against this
+  // model's own weights. Attention is column-parallel (each rank owns a
+  // contiguous slice of the heads and computes attention for just those heads
+  // -- no communication needed, since one head's attention never depends on
+  // another head's numbers) and the output/down projections are row-parallel
+  // (each rank computes its own partial contribution to the full output; the
+  // ranks' partial sums are added together, standing in for the one real
+  // network all-reduce a multi-GPU run would need per block). Requires n_heads,
   // n_kv_heads, and ffn_hidden to all divide evenly by world_size.
   void ForwardTensorParallelSimulated(const int32_t* tokens, int64_t seq_len,
                                       int64_t world_size,

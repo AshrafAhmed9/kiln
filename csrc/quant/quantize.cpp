@@ -11,7 +11,8 @@ void QuantizeInt8PerChannel(const float* weights, int64_t rows, int64_t cols,
   for (int64_t r = 0; r < rows; ++r) {
     const float* row = weights + r * cols;
     float max_abs = 0.0f;
-    for (int64_t c = 0; c < cols; ++c) max_abs = std::max(max_abs, std::abs(row[c]));
+    for (int64_t c = 0; c < cols; ++c)
+      max_abs = std::max(max_abs, std::abs(row[c]));
 
     // If every weight in this row happens to be zero, any nonzero scale
     // works (0 * anything is still 0) -- 1.0 avoids a division by zero
@@ -73,8 +74,8 @@ void CheckInt4Preconditions(int64_t cols, int64_t group_size) {
 }  // namespace
 
 void QuantizeInt4GroupWise(const float* weights, int64_t rows, int64_t cols,
-                          int64_t group_size, uint8_t* out_packed,
-                          float* out_scales) {
+                           int64_t group_size, uint8_t* out_packed,
+                           float* out_scales) {
   CheckInt4Preconditions(cols, group_size);
   int64_t groups_per_row = cols / group_size;
   int64_t bytes_per_row = cols / 2;
@@ -106,8 +107,8 @@ void QuantizeInt4GroupWise(const float* weights, int64_t rows, int64_t cols,
 }
 
 void DequantizeInt4GroupWise(const uint8_t* packed, const float* scales,
-                            int64_t rows, int64_t cols, int64_t group_size,
-                            float* out_weights) {
+                             int64_t rows, int64_t cols, int64_t group_size,
+                             float* out_weights) {
   CheckInt4Preconditions(cols, group_size);
   int64_t groups_per_row = cols / group_size;
   int64_t bytes_per_row = cols / 2;

@@ -1,9 +1,9 @@
 #include "executor/model.h"
 
+#include <gtest/gtest.h>
+
 #include <cmath>
 #include <stdexcept>
-
-#include <gtest/gtest.h>
 
 #include "executor/batch.h"
 
@@ -16,7 +16,8 @@ ModelConfig TinyConfig() {
   config.hidden_size = 8;
   config.n_layers = 2;
   config.n_heads = 2;
-  config.n_kv_heads = 1;  // grouped-query attention: 2 query heads share 1 key/value head
+  config.n_kv_heads =
+      1;  // grouped-query attention: 2 query heads share 1 key/value head
   config.head_dim = 4;
   config.ffn_hidden = 16;
   config.max_seq_len = 32;
@@ -37,10 +38,9 @@ TEST(Model, PassingACacheWithMoreThanOneSequenceThrows) {
   int32_t tokens[4] = {1, 2, 3, 4};
   std::vector<float> logits(4 * config.vocab_size);
 
-  EXPECT_THROW(
-      model.Forward(tokens, /*batch_size=*/2, /*seq_len=*/2, nullptr, 0,
-                    &cache, logits.data()),
-      std::invalid_argument);
+  EXPECT_THROW(model.Forward(tokens, /*batch_size=*/2, /*seq_len=*/2, nullptr,
+                             0, &cache, logits.data()),
+               std::invalid_argument);
 }
 
 TEST(Model, ProducesLogitsOfTheRightShape) {
@@ -160,9 +160,8 @@ TEST(Model, BatchedForwardMatchesRunningEachSequenceAlone) {
       PadSequences(sequences, /*pad_token=*/0, &valid_lengths, &max_len);
 
   std::vector<float> batched_logits(2 * max_len * config.vocab_size);
-  model.Forward(padded.data(), /*batch_size=*/2, max_len,
-                valid_lengths.data(), /*start_pos=*/0, /*cache=*/nullptr,
-                batched_logits.data());
+  model.Forward(padded.data(), /*batch_size=*/2, max_len, valid_lengths.data(),
+                /*start_pos=*/0, /*cache=*/nullptr, batched_logits.data());
 
   // Run sentence 0 alone and compare its real (non-padded) positions.
   std::vector<float> alone_logits_0(3 * config.vocab_size);
@@ -286,8 +285,7 @@ TEST(Model, RaggedPrefillContinuesFromExistingCacheLength) {
   KVCache reference_second(config.n_layers, config.max_seq_len,
                            config.n_kv_heads, config.head_dim);
   std::vector<float> ignored(2 * config.vocab_size);
-  model.Forward(warm_first, 1, 2, nullptr, 0, &reference_first,
-                ignored.data());
+  model.Forward(warm_first, 1, 2, nullptr, 0, &reference_first, ignored.data());
   model.Forward(warm_second, 1, 1, nullptr, 0, &reference_second,
                 ignored.data());
   std::vector<float> reference_first_logits(1 * config.vocab_size);
@@ -303,8 +301,7 @@ TEST(Model, RaggedPrefillContinuesFromExistingCacheLength) {
   for (int64_t row = 0; row < 2; ++row) {
     for (int64_t i = 0; i < config.vocab_size; ++i) {
       EXPECT_NEAR(continued_logits[(1 + row) * config.vocab_size + i],
-                  reference_second_logits[row * config.vocab_size + i],
-                  1e-3f);
+                  reference_second_logits[row * config.vocab_size + i], 1e-3f);
     }
   }
 }
@@ -364,7 +361,7 @@ TEST(Model, TensorParallelRejectsAWorldSizeThatDoesNotDivideEvenly) {
   std::vector<float> out(3 * config.vocab_size);
   EXPECT_THROW(model.ForwardTensorParallelSimulated(tokens, 3, /*world_size=*/3,
                                                     out.data()),
-              std::invalid_argument);
+               std::invalid_argument);
 }
 
 }  // namespace

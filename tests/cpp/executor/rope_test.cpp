@@ -1,8 +1,8 @@
 #include "executor/rope.h"
 
-#include <cmath>
-
 #include <gtest/gtest.h>
+
+#include <cmath>
 
 namespace kiln {
 namespace {

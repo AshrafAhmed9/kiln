@@ -6,8 +6,8 @@
 namespace kiln {
 
 PagedKVCache::PagedKVCache(int64_t n_layers, int64_t num_blocks,
-                            int64_t block_size, int64_t n_kv_heads,
-                            int64_t head_dim)
+                           int64_t block_size, int64_t n_kv_heads,
+                           int64_t head_dim)
     : n_layers_(n_layers),
       block_size_(block_size),
       n_kv_heads_(n_kv_heads),

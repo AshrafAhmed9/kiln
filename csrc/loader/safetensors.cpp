@@ -36,7 +36,7 @@ SafetensorsFile SafetensorsFile::Load(const std::string& path) {
   if (file_size < 8) {
     close(fd);
     throw std::runtime_error("safetensors: file too small for a header: " +
-                              path);
+                             path);
   }
 
   void* mapped = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
@@ -52,18 +52,16 @@ SafetensorsFile SafetensorsFile::Load(const std::string& path) {
   if (header_len > file_size - 8) {
     munmap(mapped, file_size);
     throw std::runtime_error(
-        "safetensors: declared header length runs past end of file: " +
-        path);
+        "safetensors: declared header length runs past end of file: " + path);
   }
 
   nlohmann::json header;
   try {
-    header = nlohmann::json::parse(
-        bytes + 8, bytes + 8 + header_len);
+    header = nlohmann::json::parse(bytes + 8, bytes + 8 + header_len);
   } catch (const nlohmann::json::exception& e) {
     munmap(mapped, file_size);
     throw std::runtime_error("safetensors: header is not valid JSON in " +
-                              path + ": " + e.what());
+                             path + ": " + e.what());
   }
 
   size_t data_region_start = 8 + header_len;
@@ -80,7 +78,7 @@ SafetensorsFile SafetensorsFile::Load(const std::string& path) {
         !meta.contains("dtype")) {
       munmap(mapped, file_size);
       throw std::runtime_error("safetensors: tensor '" + name +
-                                "' is missing a required field in " + path);
+                               "' is missing a required field in " + path);
     }
 
     uint64_t start = meta["data_offsets"][0].get<uint64_t>();
@@ -88,13 +86,12 @@ SafetensorsFile SafetensorsFile::Load(const std::string& path) {
     if (end < start || end > data_region_size) {
       munmap(mapped, file_size);
       throw std::runtime_error("safetensors: tensor '" + name +
-                                "' offsets run past the data region in " +
-                                path);
+                               "' offsets run past the data region in " + path);
     }
 
     TensorView view;
-    view.data = reinterpret_cast<const std::byte*>(bytes) + data_region_start +
-                start;
+    view.data =
+        reinterpret_cast<const std::byte*>(bytes) + data_region_start + start;
     view.dtype = ParseDType(meta["dtype"].get<std::string>());
     for (const auto& dim : meta["shape"]) {
       view.shape.push_back(dim.get<int64_t>());

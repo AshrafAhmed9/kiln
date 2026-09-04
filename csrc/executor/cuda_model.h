@@ -30,8 +30,8 @@ class CudaModel {
   // Appends tokens to the executor-owned GPU cache. start_pos must equal the
   // current cache length, which prevents a caller from accidentally using
   // keys from one sequence with positions from another.
-  void ForwardCached(const int32_t* tokens, int64_t seq_len,
-                     int64_t start_pos, float* out_logits) const;
+  void ForwardCached(const int32_t* tokens, int64_t seq_len, int64_t start_pos,
+                     float* out_logits) const;
   void ResetCache() const;
   const ModelConfig& config() const;
 

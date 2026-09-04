@@ -26,12 +26,12 @@ void DequantizeInt8PerChannel(const int8_t* quantized, const float* scales,
 // `group_size` must be even, so every group packs into whole bytes with
 // nothing left over.
 void QuantizeInt4GroupWise(const float* weights, int64_t rows, int64_t cols,
-                          int64_t group_size, uint8_t* out_packed,
-                          float* out_scales);
+                           int64_t group_size, uint8_t* out_packed,
+                           float* out_scales);
 
 void DequantizeInt4GroupWise(const uint8_t* packed, const float* scales,
-                            int64_t rows, int64_t cols, int64_t group_size,
-                            float* out_weights);
+                             int64_t rows, int64_t cols, int64_t group_size,
+                             float* out_weights);
 
 // A real INT8xINT8 GEMM: both operands are already-quantized INT8 (with one
 // scale per row on each side -- QuantizeInt8PerChannel produces exactly this

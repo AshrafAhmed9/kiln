@@ -1,5 +1,8 @@
 #include "tokenizer/bpe.h"
 
+#include <unicode/regex.h>
+#include <unicode/unistr.h>
+
 #include <algorithm>
 #include <cctype>
 #include <fstream>
@@ -7,8 +10,6 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <stdexcept>
-#include <unicode/regex.h>
-#include <unicode/unistr.h>
 
 namespace kiln {
 
@@ -51,7 +52,8 @@ std::vector<std::string> PreTokenize(const std::string& text) {
   static const icu::RegexPattern* pattern = []() {
     UErrorCode status = U_ZERO_ERROR;
     const auto expression = icu::UnicodeString::fromUTF8(
-        "(?:'s|'t|'re|'ve|'m|'ll|'d)| ?\\p{L}+| ?\\p{N}+| ?[^\\s\\p{L}\\p{N}]+|\\s+(?!\\S)|\\s+");
+        "(?:'s|'t|'re|'ve|'m|'ll|'d)| ?\\p{L}+| ?\\p{N}+| "
+        "?[^\\s\\p{L}\\p{N}]+|\\s+(?!\\S)|\\s+");
     const icu::RegexPattern* compiled =
         icu::RegexPattern::compile(expression, 0, status);
     if (U_FAILURE(status)) {
@@ -165,7 +167,7 @@ std::vector<int32_t> BpeTokenizer::BpeMergeWord(
     auto it = vocab_.find(symbol);
     if (it == vocab_.end()) {
       throw std::runtime_error("bpe: symbol not in vocab after merging: " +
-                                symbol);
+                               symbol);
     }
     ids.push_back(it->second);
   }

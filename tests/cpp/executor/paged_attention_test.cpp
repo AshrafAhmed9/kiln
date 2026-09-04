@@ -1,9 +1,9 @@
 #include "executor/paged_attention.h"
 
+#include <gtest/gtest.h>
+
 #include <cstring>
 #include <stdexcept>
-
-#include <gtest/gtest.h>
 
 #include "executor/attention.h"
 
@@ -21,7 +21,8 @@ TEST(PagedAttention, MatchesContiguousAttentionExactly) {
   int64_t block_size = 2;
 
   // q has seq_len * n_heads * head_dim = 4 * 2 * 2 = 16 numbers.
-  float q[16] = {1, 0, 0, 1, 1, 1, 0.5f, 0.5f, 0.2f, 0.8f, 0.9f, 0.1f, 1, -1, -1, 1};
+  float q[16] = {1,    0,    0,    1,    1, 1,  0.5f, 0.5f,
+                 0.2f, 0.8f, 0.9f, 0.1f, 1, -1, -1,   1};
   // k and v have seq_len * n_kv_heads * head_dim = 4 * 1 * 2 = 8 numbers each.
   float k[8] = {1, 0, 0.5f, 0.5f, 0.3f, 0.7f, -1, 1};
   float v[8] = {2, 2, 4, 4, 6, 6, 8, 8};
@@ -48,8 +49,8 @@ TEST(PagedAttention, MatchesContiguousAttentionExactly) {
   }
 
   std::vector<float> paged_out(seq_len * n_heads * head_dim);
-  PagedAttention(q, cache, /*layer=*/0, block_table, paged_out.data(),
-                 seq_len, seq_len, n_heads, n_kv_heads, head_dim,
+  PagedAttention(q, cache, /*layer=*/0, block_table, paged_out.data(), seq_len,
+                 seq_len, n_heads, n_kv_heads, head_dim,
                  /*query_start_pos=*/0);
 
   for (size_t i = 0; i < contiguous_out.size(); ++i) {
@@ -64,7 +65,8 @@ TEST(PagedAttention, MatchesContiguousAttentionExactly) {
 TEST(PagedAttention, TooFewBlocksForKvLenThrows) {
   int64_t n_heads = 1, n_kv_heads = 1, head_dim = 2;
   PagedKVCache cache(1, 4, /*block_size=*/2, n_kv_heads, head_dim);
-  std::vector<int64_t> block_table = {cache.AllocateBlock()};  // only 1 block: room for 2 kv positions
+  std::vector<int64_t> block_table = {
+      cache.AllocateBlock()};  // only 1 block: room for 2 kv positions
 
   float q[2] = {1, 0};
   std::vector<float> out(2);

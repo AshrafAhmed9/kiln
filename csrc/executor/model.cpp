@@ -70,7 +70,7 @@ Model Model::LoadRandom(const ModelConfig& config, uint32_t seed) {
 }
 
 Model Model::LoadFromSafetensors(const ModelConfig& config,
-                                  const std::string& path) {
+                                 const std::string& path) {
   // This follows the standard Llama/HuggingFace naming for weight files
   // (for example "model.layers.3.self_attn.q_proj.weight"). It has been
   // written carefully to match that naming, but it has not yet been run
@@ -121,11 +121,10 @@ Model Model::LoadFromSafetensors(const ModelConfig& config,
   return model;
 }
 
-void Model::Forward(const int32_t* tokens, int64_t batch_size,
-                     int64_t seq_len, const int64_t* valid_lengths,
-                     int64_t start_pos, KVCache* cache,
-                     float* out_logits,
-                     std::vector<std::vector<float>>* layer_outputs) const {
+void Model::Forward(const int32_t* tokens, int64_t batch_size, int64_t seq_len,
+                    const int64_t* valid_lengths, int64_t start_pos,
+                    KVCache* cache, float* out_logits,
+                    std::vector<std::vector<float>>* layer_outputs) const {
   // A cache only makes sense for one sentence at a time in this project's
   // current design (Phase 3's cache is built for a single sequence; batching
   // several sentences together with no cache at all is Phase 4's separate
@@ -230,7 +229,8 @@ void Model::Forward(const int32_t* tokens, int64_t batch_size,
             config_.rms_eps);
     SwiGlu(normed.data(), layer.w_gate.data(), layer.w_up.data(),
            layer.w_down.data(), mlp_out.data(), n_rows, d, config_.ffn_hidden);
-    for (int64_t i = 0; i < n_rows * d; ++i) x[i] += mlp_out[i];  // residual add
+    for (int64_t i = 0; i < n_rows * d; ++i)
+      x[i] += mlp_out[i];  // residual add
     if (layer_outputs != nullptr) layer_outputs->push_back(x);
   }
 
@@ -264,8 +264,7 @@ void Model::ForwardDecodeBatch(const int32_t* tokens, int64_t batch_size,
 
   std::vector<float> x(batch_size * d);
   for (int64_t b = 0; b < batch_size; ++b) {
-    std::memcpy(x.data() + b * d,
-                tok_embeddings.data() + tokens[b] * d,
+    std::memcpy(x.data() + b * d, tok_embeddings.data() + tokens[b] * d,
                 d * sizeof(float));
   }
 
@@ -290,13 +289,13 @@ void Model::ForwardDecodeBatch(const int32_t* tokens, int64_t batch_size,
               config_.head_dim, config_.rope_theta);
 
     for (int64_t b = 0; b < batch_size; ++b) {
-      caches[b]->Append(layer_idx, k.data() + b * kv_dim,
-                        v.data() + b * kv_dim, /*n_new=*/1);
+      caches[b]->Append(layer_idx, k.data() + b * kv_dim, v.data() + b * kv_dim,
+                        /*n_new=*/1);
       int64_t kv_len = caches[b]->length() + 1;
       Attention(q.data() + b * q_dim, caches[b]->K(layer_idx),
                 caches[b]->V(layer_idx), attn_out.data() + b * q_dim,
-                /*seq_len=*/1, kv_len, config_.n_heads,
-                config_.n_kv_heads, config_.head_dim, start_positions[b]);
+                /*seq_len=*/1, kv_len, config_.n_heads, config_.n_kv_heads,
+                config_.head_dim, start_positions[b]);
     }
 
     GemmBT(attn_out.data(), layer.wo.data(), proj.data(), batch_size, q_dim, d);
@@ -399,9 +398,9 @@ void Model::ForwardPrefillBatch(const int32_t* tokens, int64_t num_sequences,
                         v.data() + offset * kv_dim, len);
       int64_t kv_len = caches[b]->length() + len;
       Attention(q.data() + offset * q_dim, caches[b]->K(layer_idx),
-                caches[b]->V(layer_idx), attn_out.data() + offset * q_dim,
-                len, kv_len, config_.n_heads, config_.n_kv_heads,
-                config_.head_dim, caches[b]->length());
+                caches[b]->V(layer_idx), attn_out.data() + offset * q_dim, len,
+                kv_len, config_.n_heads, config_.n_kv_heads, config_.head_dim,
+                caches[b]->length());
     }
 
     GemmBT(attn_out.data(), layer.wo.data(), proj.data(), n_rows, q_dim, d);
@@ -445,10 +444,10 @@ void GatherColumnSlice(const float* full, int64_t out_features,
 }  // namespace
 
 void Model::ForwardTensorParallelSimulated(const int32_t* tokens,
-                                           int64_t seq_len,
-                                           int64_t world_size,
+                                           int64_t seq_len, int64_t world_size,
                                            float* out_logits) const {
-  if (config_.n_heads % world_size != 0 || config_.n_kv_heads % world_size != 0 ||
+  if (config_.n_heads % world_size != 0 ||
+      config_.n_kv_heads % world_size != 0 ||
       config_.ffn_hidden % world_size != 0) {
     throw std::invalid_argument(
         "ForwardTensorParallelSimulated: n_heads, n_kv_heads, and ffn_hidden "
@@ -497,9 +496,12 @@ void Model::ForwardTensorParallelSimulated(const int32_t* tokens,
       const float* wk_shard = layer.wk.data() + rank * kv_dim_per_rank * d;
       const float* wv_shard = layer.wv.data() + rank * kv_dim_per_rank * d;
 
-      GemmBT(normed.data(), wq_shard, q_shard.data(), seq_len, d, q_dim_per_rank);
-      GemmBT(normed.data(), wk_shard, k_shard.data(), seq_len, d, kv_dim_per_rank);
-      GemmBT(normed.data(), wv_shard, v_shard.data(), seq_len, d, kv_dim_per_rank);
+      GemmBT(normed.data(), wq_shard, q_shard.data(), seq_len, d,
+             q_dim_per_rank);
+      GemmBT(normed.data(), wk_shard, k_shard.data(), seq_len, d,
+             kv_dim_per_rank);
+      GemmBT(normed.data(), wv_shard, v_shard.data(), seq_len, d,
+             kv_dim_per_rank);
 
       // RoPE's rotation angle depends only on a token's position and which
       // pair-of-numbers within a head it is -- never on which head, or how
@@ -585,17 +587,19 @@ void Model::MergeLoraIntoLayer(int64_t layer_idx, const std::string& which,
   } else if (which == "wo") {
     MergeLoraAdapter(layer.wo.data(), lora_a, lora_b, d, q_dim, rank, scale);
   } else if (which == "w_gate") {
-    MergeLoraAdapter(layer.w_gate.data(), lora_a, lora_b, config_.ffn_hidden,
-                     d, rank, scale);
+    MergeLoraAdapter(layer.w_gate.data(), lora_a, lora_b, config_.ffn_hidden, d,
+                     rank, scale);
   } else if (which == "w_up") {
     MergeLoraAdapter(layer.w_up.data(), lora_a, lora_b, config_.ffn_hidden, d,
                      rank, scale);
   } else if (which == "w_down") {
-    MergeLoraAdapter(layer.w_down.data(), lora_a, lora_b, d,
-                     config_.ffn_hidden, rank, scale);
+    MergeLoraAdapter(layer.w_down.data(), lora_a, lora_b, d, config_.ffn_hidden,
+                     rank, scale);
   } else {
-    throw std::invalid_argument("Model::MergeLoraIntoLayer: unknown matrix "
-                                "name '" + which + "'");
+    throw std::invalid_argument(
+        "Model::MergeLoraIntoLayer: unknown matrix "
+        "name '" +
+        which + "'");
   }
 }
 

@@ -16,9 +16,8 @@ namespace kiln {
 // another) and fills `valid_lengths` with each sentence's real, unpadded
 // length, so the model knows which of the padded positions are real words
 // and which are just filler.
-std::vector<int32_t> PadSequences(const std::vector<std::vector<int32_t>>& sequences,
-                                   int32_t pad_token,
-                                   std::vector<int64_t>* valid_lengths,
-                                   int64_t* out_max_len);
+std::vector<int32_t> PadSequences(
+    const std::vector<std::vector<int32_t>>& sequences, int32_t pad_token,
+    std::vector<int64_t>* valid_lengths, int64_t* out_max_len);
 
 }  // namespace kiln

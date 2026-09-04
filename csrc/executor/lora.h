@@ -10,7 +10,7 @@ namespace kiln {
 // See docs/learning/phase-14.md for why merging happens once, here, rather
 // than being computed fresh on every forward pass.
 void MergeLoraAdapter(float* weight, const float* lora_a, const float* lora_b,
-                      int64_t out_features, int64_t in_features,
-                      int64_t rank, float scale);
+                      int64_t out_features, int64_t in_features, int64_t rank,
+                      float scale);
 
 }  // namespace kiln

@@ -3,8 +3,8 @@
 namespace kiln {
 
 void MergeLoraAdapter(float* weight, const float* lora_a, const float* lora_b,
-                      int64_t out_features, int64_t in_features,
-                      int64_t rank, float scale) {
+                      int64_t out_features, int64_t in_features, int64_t rank,
+                      float scale) {
   for (int64_t out = 0; out < out_features; ++out) {
     for (int64_t in = 0; in < in_features; ++in) {
       float delta = 0.0f;

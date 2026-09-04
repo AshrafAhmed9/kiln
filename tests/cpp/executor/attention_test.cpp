@@ -30,10 +30,11 @@ TEST(Attention, SingleTokenReturnsItsOwnValue) {
 // consistent: today's answer doesn't retroactively change because of a
 // word written after it.
 TEST(Attention, EarlierTokenIsUnaffectedByLaterToken) {
-  float q[4] = {1.0f, 0.0f, 1.0f, 0.0f};   // 2 tokens, head_dim=2
+  float q[4] = {1.0f, 0.0f, 1.0f, 0.0f};  // 2 tokens, head_dim=2
   float k[4] = {1.0f, 0.0f, 1.0f, 0.0f};
   float v_first[4] = {7.0f, 9.0f, 100.0f, 100.0f};
-  float v_second[4] = {7.0f, 9.0f, -5.0f, -5.0f};  // only token 1's value differs
+  float v_second[4] = {7.0f, 9.0f, -5.0f,
+                       -5.0f};  // only token 1's value differs
   float out_first[4];
   float out_second[4];
 

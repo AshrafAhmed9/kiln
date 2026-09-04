@@ -1,10 +1,10 @@
 #include "quant/quantize.h"
 
+#include <gtest/gtest.h>
+
 #include <cmath>
 #include <random>
 #include <stdexcept>
-
-#include <gtest/gtest.h>
 
 #include "executor/gemm.h"
 
@@ -14,14 +14,14 @@ namespace {
 TEST(QuantizeInt8, RoundTripStaysCloseToOriginal) {
   int64_t rows = 3, cols = 8;
   std::vector<float> weights = {
-      0.1f, -0.2f, 0.3f, -0.4f, 0.05f, -0.05f, 0.01f, -0.01f,
-      1.0f, -2.0f, 3.0f, -4.0f, 0.5f, -0.5f, 0.1f, -0.1f,
-      -1.5f, 1.5f, -1.5f, 1.5f, -1.5f, 1.5f, -1.5f, 1.5f,
+      0.1f,  -0.2f, 0.3f,  -0.4f, 0.05f, -0.05f, 0.01f, -0.01f,
+      1.0f,  -2.0f, 3.0f,  -4.0f, 0.5f,  -0.5f,  0.1f,  -0.1f,
+      -1.5f, 1.5f,  -1.5f, 1.5f,  -1.5f, 1.5f,   -1.5f, 1.5f,
   };
   std::vector<int8_t> quantized(rows * cols);
   std::vector<float> scales(rows);
   QuantizeInt8PerChannel(weights.data(), rows, cols, quantized.data(),
-                        scales.data());
+                         scales.data());
 
   std::vector<float> dequantized(rows * cols);
   DequantizeInt8PerChannel(quantized.data(), scales.data(), rows, cols,
@@ -47,7 +47,7 @@ TEST(QuantizeInt8, AllZeroRowDoesNotDivideByZero) {
   std::vector<float> scales(rows);
 
   QuantizeInt8PerChannel(weights.data(), rows, cols, quantized.data(),
-                        scales.data());
+                         scales.data());
 
   for (int8_t q : quantized) EXPECT_EQ(q, 0);
   EXPECT_TRUE(std::isfinite(scales[0]));
@@ -57,10 +57,9 @@ TEST(QuantizeInt4, OddGroupSizeThrowsInsteadOfSilentlyMisaligningBytes) {
   std::vector<float> weights(8, 1.0f);
   std::vector<uint8_t> packed(4);
   std::vector<float> scales(4);
-  EXPECT_THROW(
-      QuantizeInt4GroupWise(weights.data(), 1, 8, /*group_size=*/3,
-                            packed.data(), scales.data()),
-      std::invalid_argument);
+  EXPECT_THROW(QuantizeInt4GroupWise(weights.data(), 1, 8, /*group_size=*/3,
+                                     packed.data(), scales.data()),
+               std::invalid_argument);
 }
 
 TEST(QuantizeInt4, GroupSizeNotDividingColsThrows) {
@@ -70,10 +69,9 @@ TEST(QuantizeInt4, GroupSizeNotDividingColsThrows) {
   std::vector<float> weights(8, 1.0f);
   std::vector<uint8_t> packed(4);
   std::vector<float> scales(4);
-  EXPECT_THROW(
-      QuantizeInt4GroupWise(weights.data(), 1, 8, /*group_size=*/6,
-                            packed.data(), scales.data()),
-      std::invalid_argument);
+  EXPECT_THROW(QuantizeInt4GroupWise(weights.data(), 1, 8, /*group_size=*/6,
+                                     packed.data(), scales.data()),
+               std::invalid_argument);
 }
 
 TEST(QuantizeInt4, RoundTripStaysWithinOneGroupStep) {
@@ -81,17 +79,17 @@ TEST(QuantizeInt4, RoundTripStaysWithinOneGroupStep) {
   int64_t group_size = 4;
   std::vector<float> weights = {
       0.1f, -0.2f, 0.3f, -0.4f, 1.0f, -1.0f, 0.5f, -0.5f,
-      2.0f, -2.0f, 1.0f, -1.0f, 0.1f, 0.2f, 0.3f, 0.4f,
+      2.0f, -2.0f, 1.0f, -1.0f, 0.1f, 0.2f,  0.3f, 0.4f,
   };
   std::vector<uint8_t> packed(rows * cols / 2);
   std::vector<float> scales(rows * (cols / group_size));
 
   QuantizeInt4GroupWise(weights.data(), rows, cols, group_size, packed.data(),
-                       scales.data());
+                        scales.data());
 
   std::vector<float> dequantized(rows * cols);
-  DequantizeInt4GroupWise(packed.data(), scales.data(), rows, cols,
-                         group_size, dequantized.data());
+  DequantizeInt4GroupWise(packed.data(), scales.data(), rows, cols, group_size,
+                          dequantized.data());
 
   int64_t groups_per_row = cols / group_size;
   for (int64_t r = 0; r < rows; ++r) {
@@ -130,14 +128,14 @@ TEST(QuantizeInt8, QuantizedMatmulStaysCloseToFullPrecisionMatmul) {
   std::vector<int8_t> quantized(rows * cols);
   std::vector<float> scales(rows);
   QuantizeInt8PerChannel(weights.data(), rows, cols, quantized.data(),
-                        scales.data());
+                         scales.data());
   std::vector<float> dequantized_weights(rows * cols);
   DequantizeInt8PerChannel(quantized.data(), scales.data(), rows, cols,
                            dequantized_weights.data());
 
   std::vector<float> quantized_out(batch * rows);
-  GemmBT(input.data(), dequantized_weights.data(), quantized_out.data(),
-         batch, cols, rows);
+  GemmBT(input.data(), dequantized_weights.data(), quantized_out.data(), batch,
+         cols, rows);
 
   float mean_squared_error = 0.0f;
   for (size_t i = 0; i < full_precision_out.size(); ++i) {
@@ -175,29 +173,29 @@ TEST(QuantizeInt8, RealInt8GemmMatchesDequantizeThenFp32MatmulPath) {
   std::vector<int8_t> quantized_weights(rows * cols);
   std::vector<float> weight_scales(rows);
   QuantizeInt8PerChannel(weights.data(), rows, cols, quantized_weights.data(),
-                        weight_scales.data());
+                         weight_scales.data());
 
   std::vector<int8_t> quantized_input(batch * cols);
   std::vector<float> input_scales(batch);
   QuantizeInt8PerChannel(input.data(), batch, cols, quantized_input.data(),
-                        input_scales.data());
+                         input_scales.data());
 
   // The existing Phase 9 path: dequantize the weights back to float, then
   // an ordinary FP32 matmul (the input here is used at full precision,
   // unquantized, since Phase 9 only ever quantized weights).
   std::vector<float> dequantized_weights(rows * cols);
-  DequantizeInt8PerChannel(quantized_weights.data(), weight_scales.data(),
-                          rows, cols, dequantized_weights.data());
+  DequantizeInt8PerChannel(quantized_weights.data(), weight_scales.data(), rows,
+                           cols, dequantized_weights.data());
   std::vector<float> dequant_then_fp32_out(batch * rows);
-  GemmBT(input.data(), dequantized_weights.data(),
-         dequant_then_fp32_out.data(), batch, cols, rows);
+  GemmBT(input.data(), dequantized_weights.data(), dequant_then_fp32_out.data(),
+         batch, cols, rows);
 
   // The new path: both sides already INT8, accumulated in INT32, scaled
   // once at the end.
   std::vector<float> real_int8_out(batch * rows);
   Int8GemmBT(quantized_input.data(), input_scales.data(),
-            quantized_weights.data(), weight_scales.data(),
-            real_int8_out.data(), batch, cols, rows);
+             quantized_weights.data(), weight_scales.data(),
+             real_int8_out.data(), batch, cols, rows);
 
   float mean_squared_error = 0.0f;
   for (size_t i = 0; i < dequant_then_fp32_out.size(); ++i) {

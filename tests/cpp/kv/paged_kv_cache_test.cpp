@@ -17,14 +17,17 @@ TEST(PagedKVCache, AllocatingAndFreeingReturnsToTheSamePoolSize) {
   int64_t a = cache.AllocateBlock();
   int64_t b = cache.AllocateBlock();
   EXPECT_EQ(cache.num_free_blocks(), 2);
-  EXPECT_NE(a, b);  // no double-allocation: two calls never return the same block
+  EXPECT_NE(a,
+            b);  // no double-allocation: two calls never return the same block
 
   cache.DecRef(a);
   cache.DecRef(b);
-  EXPECT_EQ(cache.num_free_blocks(), 4);  // no leak: every freed block comes back
+  EXPECT_EQ(cache.num_free_blocks(),
+            4);  // no leak: every freed block comes back
 }
 
-TEST(PagedKVCache, DoubleFreeingABlockThrowsInsteadOfSilentlyCorruptingRefCounts) {
+TEST(PagedKVCache,
+     DoubleFreeingABlockThrowsInsteadOfSilentlyCorruptingRefCounts) {
   PagedKVCache cache(1, 4, 2, 1, 2);
   int64_t block = cache.AllocateBlock();
   cache.DecRef(block);  // returns it to the pool -- ref count is now 0
@@ -40,7 +43,8 @@ TEST(PagedKVCache, DoubleFreeingABlockThrowsInsteadOfSilentlyCorruptingRefCounts
 TEST(PagedKVCache, RunningOutOfBlocksFailsClosedInsteadOfCrashing) {
   PagedKVCache cache(1, /*num_blocks=*/1, 2, 1, 2);
   EXPECT_NE(cache.AllocateBlock(), -1);
-  EXPECT_EQ(cache.AllocateBlock(), -1);  // the pool is empty -- reported, not crashed into
+  EXPECT_EQ(cache.AllocateBlock(),
+            -1);  // the pool is empty -- reported, not crashed into
 }
 
 // A randomized property test in the same spirit as the scheduler's: throw
@@ -67,8 +71,9 @@ TEST(PagedKVCache, BookkeepingStaysConsistentUnderRandomOperations) {
       cache.DecRef(held_blocks[index]);
       held_blocks.erase(held_blocks.begin() + index);
     }
-    EXPECT_EQ(cache.num_free_blocks() + static_cast<int64_t>(held_blocks.size()),
-              num_blocks);
+    EXPECT_EQ(
+        cache.num_free_blocks() + static_cast<int64_t>(held_blocks.size()),
+        num_blocks);
   }
 
   for (int64_t block : held_blocks) cache.DecRef(block);
@@ -103,7 +108,9 @@ TEST(PagedSequence, ForkedSequenceSharesParentsBlocksWithoutCopying) {
 // shared prefix data must still be exactly what it was, undisturbed by
 // either descendant's write.
 TEST(PagedSequence, DivergingAfterForkNeverCorruptsTheOtherSequence) {
-  PagedKVCache cache(1, 8, 4, 1, 2);  // block_size 4, so there's room to grow past the shared prefix
+  PagedKVCache cache(
+      1, 8, 4, 1,
+      2);  // block_size 4, so there's room to grow past the shared prefix
   PagedSequence parent = PagedSequence::Fresh(&cache);
 
   float shared_k[2] = {10.0f, 20.0f};

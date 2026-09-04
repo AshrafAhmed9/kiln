@@ -22,7 +22,8 @@ class BpeTokenizer {
 
   // Applies the merge loop to one pre-token (a run of byte-level symbols
   // with no BPE applied yet), returning the final list of vocab IDs.
-  std::vector<int32_t> BpeMergeWord(const std::vector<std::string>& symbols) const;
+  std::vector<int32_t> BpeMergeWord(
+      const std::vector<std::string>& symbols) const;
 
   std::unordered_map<std::string, int32_t> vocab_;
   std::unordered_map<int32_t, std::string> id_to_token_;

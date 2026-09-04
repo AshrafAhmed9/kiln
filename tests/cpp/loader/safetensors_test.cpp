@@ -14,12 +14,12 @@ namespace {
 // Writes a minimal valid .safetensors file with one F32 tensor of the given
 // values, so loader tests don't depend on any external fixture.
 std::string WriteTestFile(const std::vector<float>& values,
-                           const std::string& shape_json) {
-  std::string path = "/tmp/kiln_test_" + std::to_string(rand()) + ".safetensors";
+                          const std::string& shape_json) {
+  std::string path =
+      "/tmp/kiln_test_" + std::to_string(rand()) + ".safetensors";
   std::string header = "{\"x\":{\"dtype\":\"F32\",\"shape\":" + shape_json +
-                        ",\"data_offsets\":[0," +
-                        std::to_string(values.size() * sizeof(float)) +
-                        "]}}";
+                       ",\"data_offsets\":[0," +
+                       std::to_string(values.size() * sizeof(float)) + "]}}";
   uint64_t header_len = header.size();
 
   std::ofstream out(path, std::ios::binary);

@@ -8,10 +8,10 @@
 namespace kiln {
 
 void PagedAttention(const float* q, const PagedKVCache& cache, int64_t layer,
-                     const std::vector<int64_t>& block_table, float* out,
-                     int64_t seq_len, int64_t kv_len, int64_t n_heads,
-                     int64_t n_kv_heads, int64_t head_dim,
-                     int64_t query_start_pos) {
+                    const std::vector<int64_t>& block_table, float* out,
+                    int64_t seq_len, int64_t kv_len, int64_t n_heads,
+                    int64_t n_kv_heads, int64_t head_dim,
+                    int64_t query_start_pos) {
   int64_t group_size = n_heads / n_kv_heads;
   float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
   int64_t block_size = cache.block_size();
@@ -49,9 +49,8 @@ void PagedAttention(const float* q, const PagedKVCache& cache, int64_t layer,
       for (int64_t j = 0; j <= last_visible; ++j) {
         int64_t block_id, slot;
         locate(j, &block_id, &slot);
-        const float* k_row =
-            cache.K(layer, block_id) + slot * n_kv_heads * head_dim +
-            kv_head * head_dim;
+        const float* k_row = cache.K(layer, block_id) +
+                             slot * n_kv_heads * head_dim + kv_head * head_dim;
         float dot = 0.0f;
         for (int64_t d = 0; d < head_dim; ++d) dot += q_row[d] * k_row[d];
         scores[j] = dot * scale;
@@ -70,9 +69,8 @@ void PagedAttention(const float* q, const PagedKVCache& cache, int64_t layer,
       for (int64_t j = 0; j <= last_visible; ++j) {
         int64_t block_id, slot;
         locate(j, &block_id, &slot);
-        const float* v_row =
-            cache.V(layer, block_id) + slot * n_kv_heads * head_dim +
-            kv_head * head_dim;
+        const float* v_row = cache.V(layer, block_id) +
+                             slot * n_kv_heads * head_dim + kv_head * head_dim;
         float weight = scores[j] / sum_exp;
         for (int64_t d = 0; d < head_dim; ++d) out_row[d] += weight * v_row[d];
       }

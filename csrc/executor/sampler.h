@@ -11,11 +11,14 @@ namespace kiln {
 // no top_k/top_p) always gives the exact same output for the exact same
 // input, which is what the parity tests rely on.
 struct SamplerConfig {
-  float temperature = 1.0f;    // higher = more random; 0 means "always pick the best one"
-  int32_t top_k = 0;           // if > 0, only consider the top_k highest-scoring words
-  float top_p = 1.0f;          // if < 1, only consider the smallest set of top words whose
-                                // probabilities add up to at least top_p (this is "nucleus sampling")
-  float repetition_penalty = 1.0f;  // > 1 makes already-used words less likely to repeat
+  float temperature =
+      1.0f;  // higher = more random; 0 means "always pick the best one"
+  int32_t top_k = 0;   // if > 0, only consider the top_k highest-scoring words
+  float top_p = 1.0f;  // if < 1, only consider the smallest set of top words
+                       // whose probabilities add up to at least top_p (this is
+                       // "nucleus sampling")
+  float repetition_penalty =
+      1.0f;  // > 1 makes already-used words less likely to repeat
 };
 
 // Always returns the single highest-scoring word. This is what "greedy"

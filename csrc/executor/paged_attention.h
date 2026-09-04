@@ -14,9 +14,9 @@ namespace kiln {
 // `Model.PagedAttentionMatchesContiguousAttention`-style test (Phase 8's
 // "paged vs contiguous parity" requirement) is what proves that.
 void PagedAttention(const float* q, const PagedKVCache& cache, int64_t layer,
-                     const std::vector<int64_t>& block_table, float* out,
-                     int64_t seq_len, int64_t kv_len, int64_t n_heads,
-                     int64_t n_kv_heads, int64_t head_dim,
-                     int64_t query_start_pos);
+                    const std::vector<int64_t>& block_table, float* out,
+                    int64_t seq_len, int64_t kv_len, int64_t n_heads,
+                    int64_t n_kv_heads, int64_t head_dim,
+                    int64_t query_start_pos);
 
 }  // namespace kiln

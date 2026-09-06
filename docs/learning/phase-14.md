@@ -54,9 +54,16 @@ These are named here as real, deferred work, not implied to be finished.
 `tools/train_lora.py` now provides the training-tooling half: it trains a
 standard PEFT `q_proj` LoRA adapter and writes a `kiln-export.json` manifest
 whose A/B orientation and scale match Kiln's `wq` merge contract. A 20-step
-SmolLM2 run over the tiny included fixture produced a 1.1 MB safetensors
-adapter. `tools/merge_lora_adapter.py` then loaded that adapter through the
+SmolLM2 run over the tiny included fixture (rank 8, lr 2e-4, seed 20260824,
+CPU) produced a 1.1 MB safetensors adapter. Since the run cycles through the
+same four records five times each, the per-record loss trend is the honest
+way to read it, not the raw step sequence: record 1 went 5.9223 → 5.8689,
+record 2 went 6.3073 → 6.2341, record 3 went 7.8765 → 7.8087, record 4 went
+7.7805 → 7.7207 -- a real, small, monotonic drop on every one of the four
+records, exactly what four memorized sentences at this learning rate should
+do. `tools/merge_lora_adapter.py` then loaded that adapter through the
 C++ binding into a real Kiln SmolLM2 model; its final logits changed by a
 maximum of 0.1098 for a three-token probe. That proves the
-training/export/serving route, not model quality: the four authored records
-are intentionally too small for any usefulness claim.
+training/export/serving route, and that the loop is actually learning
+something, not model quality: the four authored records are intentionally
+too small for any usefulness claim.

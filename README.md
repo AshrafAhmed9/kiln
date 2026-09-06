@@ -132,7 +132,7 @@ $ curl localhost:8000/v1/completions -d '{"prompt": "The capital of France is", 
 {"choices":[{"text":" Paris. Paris is the largest city in France and the capital of the French department of the Espace"}]}
 ```
 
-221-243 tok/s, measured wall-clock over real HTTP round trips (3 runs of
+219-231 tok/s, measured wall-clock over real HTTP round trips (3 runs of
 200 tokens: 219.2, 231.4, 230.8 tok/s). Start it yourself:
 `KILN_CHECKPOINT_DIR=<path-to-checkpoint> KILN_DEVICE=cuda uvicorn kiln_py.api.app:app`.
 One limit comes with it: `CudaModel` owns a single device-resident KV

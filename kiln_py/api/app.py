@@ -76,6 +76,7 @@ def _build_toy_model_and_tokenizer():
 _CHECKPOINT_DIR = os.environ.get("KILN_CHECKPOINT_DIR")
 _DEVICE = os.environ.get("KILN_DEVICE", "cpu")
 
+_completion_batches: CompletionBatchService | RealCheckpointService
 if _CHECKPOINT_DIR:
     _model, _tokenizer = load_real_model_and_tokenizer(Path(_CHECKPOINT_DIR), _DEVICE)
     _MODEL_NAME = f"kiln-real:{Path(_CHECKPOINT_DIR).name}:{_DEVICE}"

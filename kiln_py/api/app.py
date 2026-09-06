@@ -5,16 +5,24 @@ changes. This file only handles requests coming in and answers going out --
 it doesn't do any of the actual math itself; it calls into
 kiln_py.runtime.generate, which calls into the real C++ model.
 
-Honest status: the model loaded here is randomly initialized, not trained
-on real text (see docs/defense.md) -- there is no real checkpoint available
-in this offline environment. So the *shape* of every request and response
-below is real and correct, but the actual words the model produces are
-meaningless. This is stated here in plain terms rather than hidden, in
-keeping with the project's honesty rule.
+Two backends, picked at startup by environment variable:
+
+- Default (no env vars set): a small, randomly-initialized toy model with a
+  byte-level placeholder tokenizer -- there's no real checkpoint bundled
+  with this repo, so this is what runs out of the box. The *shape* of every
+  request and response is real and correct; the words the model produces
+  are not.
+- KILN_CHECKPOINT_DIR=<path to a real Llama-family HF checkpoint> (and
+  optionally KILN_DEVICE=cuda): loads real trained weights and a real BPE
+  tokenizer via kiln_py.api.real_checkpoint, and serves them on the real
+  forward pass, CPU or GPU depending on KILN_DEVICE. That path serves one
+  request at a time (see real_checkpoint.py for why) instead of the toy
+  path's continuous batching.
 """
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import time
 import uuid
@@ -33,12 +41,10 @@ from kiln_py.metrics import (
 
 from kiln_py import _C
 from kiln_py.api.batching_service import CompletionBatchService
+from kiln_py.api.real_checkpoint import RealCheckpointService, load_real_model_and_tokenizer
 from kiln_py.runtime.byte_tokenizer import write_byte_level_tokenizer_json
-from kiln_py.runtime.generate import generate
 
 app = FastAPI(title="Kiln", description="An LLM inference engine, built from scratch.")
-
-_MODEL_NAME = "kiln-toy"
 
 
 def _build_toy_model_and_tokenizer():
@@ -67,10 +73,19 @@ def _build_toy_model_and_tokenizer():
     return model, tokenizer
 
 
-_model, _tokenizer = _build_toy_model_and_tokenizer()
-_completion_batches = CompletionBatchService(
-    _model, _tokenizer, max_batch_tokens=_model.config.max_seq_len
-)
+_CHECKPOINT_DIR = os.environ.get("KILN_CHECKPOINT_DIR")
+_DEVICE = os.environ.get("KILN_DEVICE", "cpu")
+
+if _CHECKPOINT_DIR:
+    _model, _tokenizer = load_real_model_and_tokenizer(Path(_CHECKPOINT_DIR), _DEVICE)
+    _MODEL_NAME = f"kiln-real:{Path(_CHECKPOINT_DIR).name}:{_DEVICE}"
+    _completion_batches = RealCheckpointService(_model, _tokenizer)
+else:
+    _MODEL_NAME = "kiln-toy"
+    _model, _tokenizer = _build_toy_model_and_tokenizer()
+    _completion_batches = CompletionBatchService(
+        _model, _tokenizer, max_batch_tokens=_model.config.max_seq_len
+    )
 
 
 class CompletionRequest(BaseModel):

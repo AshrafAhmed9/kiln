@@ -6,17 +6,19 @@ boundary described in constitution §6.
 """
 from __future__ import annotations
 
+from typing import Iterator
+
 import numpy as np
 
 from kiln_py import _C
 
 
-def generate(model, tokenizer, prompt: str, max_new_tokens: int,
-             sampler_config, seed: int = 0) -> str:
-    """Reads `prompt`, then keeps asking the model for one more word at a
-    time (reusing the KV cache so it never has to reread words it's already
-    seen), until it has generated `max_new_tokens` new words or produced
-    them all. Returns just the newly generated text, not the prompt.
+def generate_stream(model, tokenizer, prompt: str, max_new_tokens: int,
+                     sampler_config, seed: int = 0) -> Iterator[int]:
+    """Reads `prompt`, then yields one new token id at a time (reusing the
+    KV cache so it never has to reread words it's already seen), until it
+    has generated `max_new_tokens` new words. Does not yield any prompt
+    tokens, only newly generated ones.
     """
     prompt_ids = tokenizer.encode(prompt)
     config = model.config
@@ -40,6 +42,7 @@ def generate(model, tokenizer, prompt: str, max_new_tokens: int,
         next_token = _C.sample(last_word_scores, sampler_config, all_tokens,
                                 seed + step)
         all_tokens.append(next_token)
+        yield next_token
 
         # Every following step only has to hand the model the ONE new word
         # -- the cache already remembers everything before it. This is why
@@ -51,7 +54,14 @@ def generate(model, tokenizer, prompt: str, max_new_tokens: int,
         else:
             logits = model.forward(one_token, 1, 1, None, position, cache)
 
-    new_tokens = all_tokens[len(prompt_ids):]
+
+def generate(model, tokenizer, prompt: str, max_new_tokens: int,
+             sampler_config, seed: int = 0) -> str:
+    """Same as generate_stream, but collects the whole answer and returns it
+    as text instead of yielding token ids one at a time.
+    """
+    new_tokens = list(generate_stream(model, tokenizer, prompt, max_new_tokens,
+                                      sampler_config, seed))
     raw_bytes = tokenizer.decode(new_tokens)
     # A byte-level tokenizer hands back raw bytes, not guaranteed-valid
     # text -- especially from an untrained model, which can output any byte

@@ -121,8 +121,32 @@ That's an honest, expected result for a correctness-test-sized (3-token)
 fixture: launch-overhead-bound, not compute-bound. Full writeup:
 `docs/defense.md`, Phase 30.
 
+**A real checkpoint, served end to end, on that same real GPU.** Not a
+kernel microbenchmark this time -- the actual OpenAI-compatible HTTP server
+(`kiln_py/api/app.py`), loading `SmolLM2-135M-Instruct`'s real trained
+weights and real BPE tokenizer through `Model.load_from_safetensors`,
+running on `CudaModel` on the GTX 1660 Ti, answering real HTTP requests:
+
+```
+$ curl localhost:8000/v1/completions -d '{"prompt": "The capital of France is", "max_tokens": 20, "temperature": 0.0}'
+{"choices":[{"text":" Paris. Paris is the largest city in France and the capital of the French department of the Espace"}]}
+```
+
+221-243 tok/s, measured wall-clock over real HTTP round trips (3 runs of
+200 tokens: 219.2, 231.4, 230.8 tok/s). Start it yourself:
+`KILN_CHECKPOINT_DIR=<path-to-checkpoint> KILN_DEVICE=cuda uvicorn kiln_py.api.app:app`.
+One limit comes with it: `CudaModel` owns a single device-resident KV
+cache, not the CPU model's per-request cache objects, so this path serves
+one request at a time instead of the continuous-batching scheduler the toy
+CPU demo uses -- see `kiln_py/api/real_checkpoint.py`.
+
 ## What's not done, and why
 
+- **The GPU serving path batches one request at a time.** `CudaModel` owns
+  one device-resident KV cache; the continuous-batching scheduler
+  (`kiln_py/scheduler/`) only drives the CPU model's per-request cache
+  objects today. Extending it to multiple concurrent GPU-resident caches is
+  the natural next step, not done here.
 - **Tensor parallelism is a single-process simulation** of sharded ranks,
   tested against real model weights, but never run across actual separate
   GPUs. No multi-GPU machine has been available.

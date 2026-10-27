@@ -38,6 +38,17 @@ if(KILN_SANITIZE)
 endif()
 
 find_package(nlohmann_json 3.10 REQUIRED)
+
+# On macOS, Homebrew keeps ICU in its own folder that CMake does not search by
+# default. Point CMake at it (Apple Silicon and Intel locations) so a fresh
+# checkout configures without extra flags.
+if(APPLE)
+  foreach(prefix /opt/homebrew/opt/icu4c /usr/local/opt/icu4c)
+    if(IS_DIRECTORY ${prefix})
+      list(APPEND CMAKE_PREFIX_PATH ${prefix})
+    endif()
+  endforeach()
+endif()
 find_package(ICU REQUIRED COMPONENTS i18n uc)
 
 # The compute layer (csrc/) -- everything below the

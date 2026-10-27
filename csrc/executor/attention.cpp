@@ -1,5 +1,6 @@
 #include "executor/attention.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <vector>
@@ -22,7 +23,8 @@ void Attention(const float* q, const float* k, const float* v, float* out,
       int64_t query_pos = query_start_pos + i;
 
       // This word can see itself and everything before it, nothing later.
-      int64_t last_visible = query_pos;
+      // The min() also keeps us inside the keys we were given.
+      int64_t last_visible = std::min(query_pos, kv_len - 1);
 
       // Step 1: score how well this word's query matches each earlier key.
       float max_score = -std::numeric_limits<float>::infinity();

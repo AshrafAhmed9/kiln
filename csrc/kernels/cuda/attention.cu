@@ -20,7 +20,8 @@ __global__ void AttentionKernel(const float* q, const float* k,
   int64_t kv_head = head / group_size;
 
   int64_t query_pos = query_start_pos + query_row;
-  int64_t last_visible = query_pos;  // can see itself and earlier words only
+  // A word sees itself and earlier words only, and never past the last key.
+  int64_t last_visible = min(query_pos, kv_len - 1);
 
   const float* q_row = q + query_row * n_heads * head_dim + head * head_dim;
   float scale = rsqrtf(static_cast<float>(head_dim));

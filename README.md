@@ -11,22 +11,29 @@ assuming it works.
 
 ## How it fits together
 
-```mermaid
-flowchart TD
-    C["Client<br/>(curl, openai package)"] --> API["FastAPI server<br/>kiln_py/api: OpenAI-compatible /v1/completions"]
-    API --> GEN["Generate loop<br/>kiln_py/runtime: one request at a time, behind a lock"]
-    GEN --> M["Model (pybind11 boundary, csrc/bindings.cpp)"]
+```
+ Client (curl, openai package)
+        |
+        v
+ FastAPI server            kiln_py/api       OpenAI-compatible /v1/completions
+        |
+        v
+ Generate loop             kiln_py/runtime   one request at a time, behind a lock
+        |
+ ======== pybind11 boundary (csrc/bindings.cpp): Python ends, C++ begins ========
+        |
+        v
+ Model (C++)
+   |-- BPE tokenizer              csrc/tokenizer
+   |-- Weights loader             csrc/loader      (safetensors)
+   |-- Forward pass               csrc/executor    attention, RMSNorm, RoPE, SwiGLU, sampler
+   |       |<--> KV cache         csrc/kv          contiguous, or paged with
+   |       |                                       copy-on-write prefix sharing
+   |       |--> CUDA kernels      csrc/kernels/cuda  + cuBLAS GEMM
+   |       '--> Quantization      csrc/quant       INT8 / INT4
 
-    subgraph CPP["C++ / CUDA"]
-        M --> TOK["BPE tokenizer<br/>csrc/tokenizer"]
-        M --> LOAD["Weights loader<br/>csrc/loader (safetensors)"]
-        M --> FWD["Forward pass<br/>csrc/executor: attention, RMSNorm, RoPE, SwiGLU, sampler"]
-        FWD <--> KV["KV cache<br/>csrc/kv: contiguous, or paged with copy-on-write prefix sharing"]
-        FWD --> GPU["CUDA kernels + cuBLAS GEMM<br/>csrc/kernels/cuda"]
-        FWD --> Q["INT8 / INT4 quantization<br/>csrc/quant"]
-    end
-
-    HF["Hugging Face model"] -. compared by tools/hf_parity.py .-> FWD
+ Offline, not on the request path:
+   tools/hf_parity.py  compares the forward pass against Hugging Face logits
 ```
 
 A request comes in over HTTP, the generate loop calls the model one token at

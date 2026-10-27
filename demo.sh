@@ -61,7 +61,8 @@ step "2/6  C++ tests (tokenizer, forward pass, KV cache, paged cache, INT8, LoRA
 ctest --test-dir build --output-on-failure | tail -4
 
 step "3/6  Python tests (API, CUDA runtime, LoRA binding, quantization)"
-"$PY" -m pytest tests/py -q 2>&1 | tail -2
+# The tests use the small toy model, whatever checkpoint is configured.
+env -u KILN_CHECKPOINT_DIR -u KILN_DEVICE "$PY" -m pytest tests/py -q 2>&1 | tail -2
 
 step "4/6  Benchmarks: KV cache vs no cache, latency, memory, INT8"
 "$PY" bench/run_benchmarks.py

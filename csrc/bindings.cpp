@@ -157,7 +157,8 @@ py::tuple QuantizeInt8PerChannelPy(ContiguousFloatArray weights) {
 }  // namespace kiln
 
 PYBIND11_MODULE(_C, m) {
-  m.doc() = "Kiln compute extension -- the C++/CUDA side of the pybind11 boundary";
+  m.doc() =
+      "Kiln compute extension -- the C++/CUDA side of the pybind11 boundary";
   m.def("ping", &kiln::Ping);
 
   py::class_<kiln::ModelConfig>(m, "ModelConfig")

@@ -5,7 +5,6 @@
 #include <cmath>
 #include <stdexcept>
 
-
 namespace kiln {
 namespace {
 

@@ -11,35 +11,57 @@ assuming it works.
 
 ## How it fits together
 
-```
- Client (curl, openai package)
-        |
-        v
- FastAPI server            kiln_py/api       OpenAI-compatible /v1/completions
-        |
-        v
- Generate loop             kiln_py/runtime   one request at a time, behind a lock
-        |
- ======== pybind11 boundary (csrc/bindings.cpp): Python ends, C++ begins ========
-        |
-        v
- Model (C++)
-   |-- BPE tokenizer              csrc/tokenizer
-   |-- Weights loader             csrc/loader      (safetensors)
-   |-- Forward pass               csrc/executor    attention, RMSNorm, RoPE, SwiGLU, sampler
-   |       |<--> KV cache         csrc/kv          contiguous, or paged with
-   |       |                                       copy-on-write prefix sharing
-   |       |--> CUDA kernels      csrc/kernels/cuda  + cuBLAS GEMM
-   |       '--> Quantization      csrc/quant       INT8 / INT4
+Follow one request from top to bottom.
 
- Offline, not on the request path:
-   tools/hf_parity.py  compares the forward pass against Hugging Face logits
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  YOU   send a prompt over HTTP                                         │
+│        "The capital of France is"  (curl, or the openai package)       │
+└────────────────────────────────────┬───────────────────────────────────┘
+                                     ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ 1  WEB API                                                    Python   │
+│                                                                        │
+│  Receives the request in the same format OpenAI uses, so existing      │
+│  tools work unchanged. Handles one request at a time.                  │
+│                                                                        │
+│  kiln_py/api                                                           │
+└────────────────────────────────────┬───────────────────────────────────┘
+                                     ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ 2  TOKENIZER                                                     C++   │
+│                                                                        │
+│  Cuts the text into pieces and turns each piece into a number,         │
+│  because the model only works with numbers.                            │
+│                                                                        │
+│  csrc/tokenizer                                                        │
+└────────────────────────────────────┬───────────────────────────────────┘
+                                     ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ 3  MODEL                                                C++ and CUDA   │
+│                                                                        │
+│  Pushes the numbers through the network layers (attention, RMSNorm,    │
+│  RoPE, SwiGLU) and picks the next word. Weights are read from disk.    │
+│                                                                        │
+│  KV cache   Remembers the words already processed, so each new word    │
+│             costs one step instead of re-reading the whole prompt.     │
+│             Paged, so prompts that start the same share memory.        │
+│  GPU        Hand-written CUDA kernels, cuBLAS for matrix multiply.     │
+│  INT8/INT4  Shrinks the weights to use less memory.                    │
+│                                                                        │
+│  Repeats for every word it writes: the new word goes back in.          │
+│                                                                        │
+│  csrc/executor  csrc/kv  csrc/kernels  csrc/quant  csrc/loader         │
+└────────────────────────────────────┬───────────────────────────────────┘
+                                     ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│  YOU   get the text back, all at once or streamed word by word         │
+│        "Paris. Paris is the largest city in France and..."             │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-A request comes in over HTTP, the generate loop calls the model one token at
-a time, and the model reads and writes the KV cache as it goes. Python only
-orchestrates; all tensor math is in C++/CUDA. The Hugging Face comparison runs
-offline and is not on the request path.
+Checked offline, not part of a request: `tools/hf_parity.py` runs the same
+prompts through Kiln and through Hugging Face and compares the output scores.
 
 ## What's in it
 
@@ -97,6 +119,15 @@ covered by unit tests in `tests/cpp/kv/`, not by a benchmark.
 - Not deployed, no real users.
 
 ## Try it
+
+One command runs everything: build, tests, benchmarks, the HTTP API, and the
+Hugging Face comparison (it uses a cached SmolLM2-135M-Instruct if it finds one):
+
+```bash
+bash demo.sh
+```
+
+Or step by step:
 
 ```bash
 brew install cmake ninja nlohmann-json icu4c pybind11   # macOS build deps

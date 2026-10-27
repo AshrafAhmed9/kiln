@@ -90,6 +90,6 @@ kiln_py/   Python API and runtime
 tests/     cpp/ (GoogleTest), py/ (pytest)
 tools/     Hugging Face comparison, LoRA training, quantizer cross-check
 bench/     benchmarks
-docs/      adr/ (design decisions), correctness.md (bugs found),
-           defense.md (what each part is and why), writeups/
+docs/      correctness.md (bugs found), defense.md (what each part is
+           and why), writeups/
 ```

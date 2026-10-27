@@ -4,27 +4,23 @@
 
 namespace kiln {
 
-// INT8, one scale per row (per output channel -- a weight matrix here is
-// [rows, cols] = [out_features, in_features], so "per channel" means "per
-// row"). A separate scale per group keeps one outlier from ruining
-// precision for everything else.
+// INT8 quantization stores each weight as a whole number from -127 to 127
+// plus one scale per row, which says how big one step is. That uses 1 byte
+// per weight instead of 4. Giving every row its own scale stops one large
+// weight from ruining the precision of the others.
 //
-// weights is [rows, cols]. out_quantized (same shape) holds each weight's
-// nearest representable integer step, in [-127, 127]. out_scales (one per
-// row) holds how much one integer step is worth, in the original units.
+// weights is [rows, cols]. out_quantized has the same shape. out_scales has
+// one entry per row.
 void QuantizeInt8PerChannel(const float* weights, int64_t rows, int64_t cols,
                             int8_t* out_quantized, float* out_scales);
 
 void DequantizeInt8PerChannel(const int8_t* quantized, const float* scales,
                               int64_t rows, int64_t cols, float* out_weights);
 
-// INT4, grouped every `group_size` consecutive weights within a row (a
-// smaller group than "per row" trades a little more overhead for finer
-// protection against outliers). Each
-// value is packed two-to-a-byte, since fitting two 4-bit numbers in one
-// byte is the entire reason to use 4-bit numbers instead of 8-bit ones.
-// `group_size` must be even, so every group packs into whole bytes with
-// nothing left over.
+// INT4 quantization: whole numbers from -7 to 7, two packed into each byte.
+// Each group of `group_size` weights in a row gets its own scale (smaller
+// groups are more precise but need more scales). group_size must be even
+// and divide the row length.
 void QuantizeInt4GroupWise(const float* weights, int64_t rows, int64_t cols,
                            int64_t group_size, uint8_t* out_packed,
                            float* out_scales);
@@ -33,25 +29,15 @@ void DequantizeInt4GroupWise(const uint8_t* packed, const float* scales,
                              int64_t rows, int64_t cols, int64_t group_size,
                              float* out_weights);
 
-// A real INT8xINT8 GEMM: both operands are already-quantized INT8 (with one
-// scale per row on each side -- QuantizeInt8PerChannel produces exactly this
-// shape for either the weight side or, applied to activations instead of
-// weights, the input side too, since the math is identical either way).
-// The dot products accumulate in INT32 (so 127*127 summed many times never
-// overflows an INT8 or even an INT16), and only the final sum gets
-// converted back to a float and scaled -- this is what actually lets INT8
-// tensor cores do the work on a GPU, unlike this project's existing
-// quantize-then-dequantize-then-FP32-matmul path, which only ever
-// saves memory, never GEMM time, because it does the real multiplication in
-// FP32 either way.
+// Matrix multiply on INT8 numbers: C[M,N] = A[M,K] * B^T, where B is [N,K].
 //
-// a_quantized is [M, K], one scale per row (out_scales_a, M entries) --
-// this is the *activation* side, quantized fresh per call, since unlike
-// weights an activation isn't known ahead of time.
-// b_quantized_transposed is [N, K] (HF/GemmBT's usual out-features-first
-// layout), one scale per row (out_scales_b, N entries) -- this is the
-// weight side, already quantized once at load time.
-// c is [M, N].
+// The products are added up as whole numbers (INT32, so nothing overflows),
+// and only the final sum is turned back into a decimal and multiplied by
+// the two scales. This is what lets a GPU's INT8 hardware do the heavy work.
+// Dequantizing first and multiplying in FP32 saves memory but no time.
+//
+// a is the input, quantized fresh on every call (a_scales has M entries).
+// b is the weights, quantized once when loaded (b_scales has N entries).
 void Int8GemmBT(const int8_t* a_quantized, const float* a_scales,
                 const int8_t* b_quantized_transposed, const float* b_scales,
                 float* c, int64_t M, int64_t K, int64_t N);

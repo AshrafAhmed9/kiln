@@ -5,11 +5,10 @@
 
 namespace kiln {
 
-// Settings for turning a row of logits (one raw "how likely" score per
-// possible next word) into one chosen word. All the knobs below make the
-// output more or less random on purpose -- greedy decoding (temperature 0,
-// no top_k/top_p) always gives the exact same output for the exact same
-// input, which is what the parity tests rely on.
+// Settings for picking the next word from the model's scores (one score per
+// possible word). Greedy decoding (temperature 0) always picks the top
+// word, so the same input always gives the same output. The Hugging Face
+// comparison relies on that.
 struct SamplerConfig {
   float temperature =
       1.0f;  // higher = more random; 0 means "always pick the best one"
@@ -21,15 +20,11 @@ struct SamplerConfig {
       1.0f;  // > 1 makes already-used words less likely to repeat
 };
 
-// Always returns the single highest-scoring word. This is what "greedy"
-// decoding means, and it's the version we compare against the reference
-// model, since it has no randomness to account for.
+// Returns the single highest-scoring word ("greedy" decoding).
 int32_t GreedyArgmax(const float* logits, int64_t vocab_size);
 
-// Picks one word according to the settings above, using `rng` for any
-// randomness needed. Passing the same rng state twice gives the same
-// answer twice -- this is what makes generation replayable, which matters
-// both for debugging and for the project's determinism promise.
+// Picks one word using the settings above. The same rng state always gives
+// the same word, so a run can be repeated exactly.
 int32_t Sample(const float* logits, int64_t vocab_size,
                const SamplerConfig& config,
                const std::vector<int32_t>& previous_tokens, std::mt19937& rng);

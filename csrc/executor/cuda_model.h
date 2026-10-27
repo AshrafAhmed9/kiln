@@ -7,10 +7,9 @@
 
 namespace kiln {
 
-// Device-resident forward pass for one sequence. Its contiguous GPU KV cache
-// intentionally matches KVCache's single-sequence contract; batching and
-// paging need a different device layout and are not hidden behind a CPU
-// fallback.
+// The model running on the GPU, for one text at a time. It keeps its own KV
+// cache in GPU memory, one contiguous buffer like KVCache. (The paged cache
+// is CPU-only.)
 class CudaModel {
  public:
   explicit CudaModel(const Model& model);
@@ -21,15 +20,15 @@ class CudaModel {
   CudaModel(CudaModel&&) noexcept;
   CudaModel& operator=(CudaModel&&) noexcept;
 
-  // Runs one complete prefill sequence and copies [seq_len, vocab_size]
-  // logits back to host memory. `start_pos` has the same meaning as
-  // Model::Forward, but no KV cache is accepted by this initial executor.
+  // Runs a whole text with no cache and copies the scores, shape
+  // [seq_len, vocab_size], back to the CPU. start_pos means the same as in
+  // Model::Forward.
   void Forward(const int32_t* tokens, int64_t seq_len, int64_t start_pos,
                float* out_logits) const;
 
-  // Appends tokens to the executor-owned GPU cache. start_pos must equal the
-  // current cache length, which prevents a caller from accidentally using
-  // keys from one sequence with positions from another.
+  // Like Forward, but saves keys and values in the GPU's own cache.
+  // start_pos must equal the number of words already cached, to catch
+  // mixing up two different texts.
   void ForwardCached(const int32_t* tokens, int64_t seq_len, int64_t start_pos,
                      float* out_logits) const;
   void ResetCache() const;

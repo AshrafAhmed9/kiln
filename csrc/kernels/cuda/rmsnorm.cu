@@ -1,19 +1,15 @@
-// RMSNorm on the GPU. It passed a small CPU-vs-GPU check on Kaggle's P100.
-// The math is identical to csrc/executor/rmsnorm.cpp; only the way work is
-// split across threads is different.
+// RMSNorm on the GPU. Same math as csrc/executor/rmsnorm.cpp, with the work
+// split across threads.
 #include <cuda_runtime.h>
 #include <cstdint>
 
 namespace kiln {
 
-// One GPU "block" (a group of threads that can cooperate) handles one row.
-// Each thread in the block first adds up the squares of the numbers it's
-// personally responsible for, and then all the threads in the block
-// combine their partial sums together using a "warp shuffle" -- a
-// hardware instruction that lets threads within a group of 32 (a "warp")
-// pass a value directly to each other without going through slower shared
-// memory at all. This is the standard, fast way to answer "what's the sum
-// of all these numbers, spread across many threads?" on a GPU.
+// One GPU block (a group of cooperating threads) handles one row. Each
+// thread adds up the squares of its share of the numbers. Then the threads
+// combine their partial sums with a "warp shuffle", a hardware instruction
+// that lets the 32 threads of a warp pass values to each other directly,
+// without going through slower shared memory.
 __global__ void RmsNormKernel(const float* x, const float* weight,
                                float* out, int64_t dim, float eps) {
   int64_t row = blockIdx.x;

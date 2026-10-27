@@ -4,18 +4,12 @@
 
 namespace kiln {
 
-// C[M,N] = A[M,K] * B[K,N], all row-major. Simple, not optimized:
-// loop order i-k-j keeps the inner loop's B/C access
-// sequential, which is the one cache-blocking lesson worth having in a CPU
-// reference path -- the GPU path replaces this entirely with
-// cuBLAS, so a fuller tiling scheme here would be effort spent on code that
-// gets thrown away.
-void Gemm(const float* A, const float* B, float* C, int64_t M, int64_t K,
-          int64_t N);
-
-// C[M,N] = A[M,K] * B^T, where B is stored [N,K] (row-major) -- the layout
-// HF/safetensors uses for linear-layer weights (out_features, in_features).
-// Avoids materializing a transposed copy of every weight matrix.
+// Matrix multiply: C[M,N] = A[M,K] * B^T, where B is stored as [N,K].
+//
+// Model weights are stored one output per row ([out_features, in_features]),
+// which is exactly this "B transposed" layout, so no weight needs to be
+// flipped first. This is the plain CPU version. On the GPU, cuBLAS does the
+// same job much faster.
 void GemmBT(const float* A, const float* B_transposed, float* C, int64_t M,
             int64_t K, int64_t N);
 

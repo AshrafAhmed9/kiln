@@ -1,12 +1,7 @@
-// The greedy (argmax) sampling kernel on the GPU. It passed a small
-// CPU-vs-GPU check on Kaggle's P100. Only greedy argmax is written
-// as a hand-written CUDA kernel here;
-// the
-// randomized settings (temperature, top-k, top-p, repetition penalty) use
-// the exact same reduction pattern as this kernel but were left as CPU-side
-// work in this pass, since the interesting, defend-in-an-interview idea --
-// "how do many threads agree on the single largest value across a whole
-// row, without racing each other?" -- is already fully present here.
+// Greedy sampling on the GPU: find the highest-scoring word. Only this
+// simplest mode is a GPU kernel; temperature, top-k and top-p sampling run
+// on the CPU. The core problem is the same either way: many threads must
+// agree on the single largest value in a row without interfering.
 #include <cuda_runtime.h>
 #include <cstdint>
 #include <float.h>

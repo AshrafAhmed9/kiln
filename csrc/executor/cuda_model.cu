@@ -1,3 +1,7 @@
+// The model running on the GPU. At construction, all weights are copied to
+// GPU memory once. Each Forward call then copies in the token ids, runs
+// every layer on the GPU, and copies the scores back. This follows the same
+// steps as Model::Forward in model.cpp.
 #include "executor/cuda_model.h"
 
 #include <cublas_v2.h>
@@ -14,6 +18,7 @@
 namespace kiln {
 namespace {
 
+// Turn CUDA / cuBLAS error codes into C++ exceptions with a readable message.
 void CheckCuda(cudaError_t status, const char* operation) {
   if (status != cudaSuccess) {
     throw std::runtime_error(std::string(operation) + ": " +
@@ -27,6 +32,8 @@ void CheckCuBlas(cublasStatus_t status, const char* operation) {
   }
 }
 
+// An array in GPU memory. It frees itself when it goes out of scope, so
+// nothing leaks, and it can be moved but not copied.
 template <typename T>
 class DeviceBuffer {
  public:
@@ -90,6 +97,8 @@ class DeviceBuffer {
   size_t count_ = 0;
 };
 
+// Looks up each word's embedding (its list of numbers) from the table.
+// One GPU block handles one word.
 __global__ void GatherEmbeddingsKernel(const int32_t* tokens,
                                        const float* embeddings, float* out,
                                        int64_t seq_len, int64_t dim) {
@@ -106,6 +115,7 @@ void GatherEmbeddingsCuda(const int32_t* tokens, const float* embeddings,
       tokens, embeddings, out, seq_len, dim);
 }
 
+// Matrix multiply through cuBLAS: C[m,n] = A[m,k] * B^T, with B stored [n,k].
 void GemmBTWithHandle(cublasHandle_t handle, const float* a,
                       const float* b_transposed, float* c, int64_t m,
                       int64_t k, int64_t n) {
@@ -123,7 +133,9 @@ void GemmBTWithHandle(cublasHandle_t handle, const float* a,
 
 }  // namespace
 
+// Everything that lives in GPU memory.
 struct CudaModel::Impl {
+  // One decoder layer's weights, copied to the GPU.
   struct Layer {
     DeviceBuffer<float> attn_norm;
     DeviceBuffer<float> wq;
@@ -151,6 +163,7 @@ struct CudaModel::Impl {
     }
   };
 
+  // The saved keys and values for one layer (the GPU's KV cache).
   struct CacheLayer {
     explicit CacheLayer(size_t count) : k(count), v(count) {}
     DeviceBuffer<float> k;
@@ -193,6 +206,8 @@ struct CudaModel::Impl {
 
   ~Impl() { cublasDestroy(handle); }
 
+  // The weights, the KV cache, and scratch buffers sized for the longest
+  // allowed text, so no memory is allocated while generating.
   ModelConfig config;
   cublasHandle_t handle = nullptr;
   DeviceBuffer<float> embeddings;
@@ -222,11 +237,14 @@ CudaModel::~CudaModel() = default;
 CudaModel::CudaModel(CudaModel&&) noexcept = default;
 CudaModel& CudaModel::operator=(CudaModel&&) noexcept = default;
 
+// Without the cache: every call works on the whole text it is given.
 void CudaModel::Forward(const int32_t* host_tokens, int64_t seq_len,
                         int64_t start_pos, float* out_logits) const {
   ForwardImpl(host_tokens, seq_len, start_pos, out_logits, /*use_cache=*/false);
 }
 
+// With the cache: keys and values are saved on the GPU, so later calls only
+// need the newest word.
 void CudaModel::ForwardCached(const int32_t* host_tokens, int64_t seq_len,
                               int64_t start_pos, float* out_logits) const {
   if (start_pos != impl_->cache_length) {
@@ -240,6 +258,7 @@ void CudaModel::ResetCache() const { impl_->cache_length = 0; }
 
 const ModelConfig& CudaModel::config() const { return impl_->config; }
 
+// The shared forward pass. The steps match Model::Forward on the CPU.
 void CudaModel::ForwardImpl(const int32_t* host_tokens, int64_t seq_len,
                             int64_t start_pos, float* out_logits,
                             bool use_cache) const {
@@ -254,6 +273,8 @@ void CudaModel::ForwardImpl(const int32_t* host_tokens, int64_t seq_len,
       throw std::invalid_argument("CudaModel::Forward token is out of range");
     }
   }
+  // Check the inputs, then copy the token ids and positions to the GPU and
+  // look up each word's embedding.
   std::vector<int64_t> host_positions(seq_len);
   for (int64_t i = 0; i < seq_len; ++i) host_positions[i] = start_pos + i;
   impl_->tokens.CopyFromHost(host_tokens, seq_len);
@@ -265,6 +286,7 @@ void CudaModel::ForwardImpl(const int32_t* host_tokens, int64_t seq_len,
   const int64_t q_dim = impl_->config.n_heads * impl_->config.head_dim;
   const int64_t kv_dim = impl_->config.n_kv_heads * impl_->config.head_dim;
   for (const Impl::Layer& layer : impl_->layers) {
+    // Attention: normalize, compute queries/keys/values, stamp in positions.
     RmsNormCuda(impl_->x.data(), layer.attn_norm.data(), impl_->normed.data(),
                 seq_len, d, impl_->config.rms_eps);
     GemmBTWithHandle(impl_->handle, impl_->normed.data(), layer.wq.data(),
@@ -279,6 +301,8 @@ void CudaModel::ForwardImpl(const int32_t* host_tokens, int64_t seq_len,
     ApplyRopeCuda(impl_->k.data(), impl_->positions.data(), seq_len,
                   impl_->config.n_kv_heads, impl_->config.head_dim,
                   impl_->config.rope_theta);
+    // With the cache on, save this call's keys and values and attend over
+    // everything saved so far.
     const float* k_for_attention = impl_->k.data();
     const float* v_for_attention = impl_->v.data();
     int64_t kv_len = seq_len;
@@ -298,8 +322,9 @@ void CudaModel::ForwardImpl(const int32_t* host_tokens, int64_t seq_len,
                   impl_->config.head_dim, start_pos);
     GemmBTWithHandle(impl_->handle, impl_->attn_out.data(), layer.wo.data(),
                      impl_->projection.data(), seq_len, q_dim, d);
-    AddCuda(impl_->x.data(), impl_->projection.data(), seq_len * d);
+    AddCuda(impl_->x.data(), impl_->projection.data(), seq_len * d);  // residual
 
+    // Feed-forward network (SwiGLU).
     RmsNormCuda(impl_->x.data(), layer.ffn_norm.data(), impl_->normed.data(),
                 seq_len, d, impl_->config.rms_eps);
     GemmBTWithHandle(impl_->handle, impl_->normed.data(), layer.w_gate.data(),
@@ -312,6 +337,8 @@ void CudaModel::ForwardImpl(const int32_t* host_tokens, int64_t seq_len,
                      impl_->mlp_out.data(), seq_len, impl_->config.ffn_hidden, d);
     AddCuda(impl_->x.data(), impl_->mlp_out.data(), seq_len * d);
   }
+  // Final norm, then score every word in the vocabulary and copy the scores
+  // back to the CPU.
   RmsNormCuda(impl_->x.data(), impl_->final_norm.data(), impl_->normed.data(),
               seq_len, d, impl_->config.rms_eps);
   GemmBTWithHandle(impl_->handle, impl_->normed.data(), impl_->lm_head.data(),

@@ -21,11 +21,9 @@ void BuggyRmsNormMissingMeanDivision(const float* x, const float* weight,
   for (int64_t i = 0; i < dim; ++i) out[i] = (x[i] / wrong_rms) * weight[i];
 }
 
-// This is the "test the harness itself": hand the same tolerance
-// check used elsewhere in this project a known-correct result and a
-// known-wrong one, and confirm it actually reports disagreement --
-// proving a tolerance check that always says "close enough" wouldn't slip
-// through unnoticed.
+// Tests the tolerance check itself. Give it a correct result and a
+// deliberately wrong one, and confirm it flags the wrong one. A check that
+// always says "close enough" would be useless.
 TEST(ParityHarness, ToleranceCheckCatchesADeliberatelyInjectedBug) {
   int64_t dim = 8;
   std::vector<float> x = {1, 2, 3, 4, 5, 6, 7, 8};

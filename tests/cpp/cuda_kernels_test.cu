@@ -27,12 +27,10 @@ void CheckCuda(cudaError_t status, const char* operation) {
   }
 }
 
-// cuBLAS's INT8xINT8->INT32 tensor-core path (CUBLAS_COMPUTE_32I) needs
-// compute capability 6.1 or newer (Pascal GP102-and-up, or Turing/Ampere) --
-// a P100 (6.0, the exact GPU this repo has been validated on via Kaggle) is
-// one minor version short of it. This distinguishes that real, named
-// hardware gap from an actual bug: the CPU reference (Int8GemmBT) is still
-// fully tested regardless of which GPU this session happens to have.
+// cuBLAS's INT8 path (CUBLAS_COMPUTE_32I) needs a GPU with compute
+// capability 6.1 or newer. A Kaggle P100 is 6.0, so it falls just short.
+// This check lets those GPUs skip the INT8 test instead of failing it. The
+// CPU INT8 code is still fully tested either way.
 bool DeviceSupportsInt8TensorCores() {
   int device = 0;
   CheckCuda(cudaGetDevice(&device), "cudaGetDevice");
@@ -135,9 +133,8 @@ TEST(CudaGemm, CuBlasMatchesCpuReference) {
 // check, not the speed measurement (that's bench/int8_gemm_cuda_benchmark.cu).
 TEST(CudaInt8Gemm, MatchesCpuReference) {
   if (!DeviceSupportsInt8TensorCores()) {
-    GTEST_SKIP() << "This GPU's compute capability is below 6.1 -- cuBLAS's "
-                    "INT8 tensor-core path (CUBLAS_COMPUTE_32I) isn't "
-                    "available here. Real, named hardware gap, not a bug.";
+    GTEST_SKIP() << "This GPU's compute capability is below 6.1, so cuBLAS's "
+                    "INT8 path (CUBLAS_COMPUTE_32I) is not available.";
   }
   constexpr int64_t kRows = 4;   // "M" -- number of activation rows
   constexpr int64_t kInput = 32;   // "K" -- must be a multiple of 4 for cuBLAS's INT8 IMMA path

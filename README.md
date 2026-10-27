@@ -22,10 +22,11 @@ assuming it works.
 | Forward pass: attention, RMSNorm, SwiGLU, RoPE, sampling | `csrc/executor/` |
 | KV cache: contiguous, and paged with shared prefixes | `csrc/kv/` |
 | INT8/INT4 quantization | `csrc/quant/` |
-| LoRA merge | `csrc/executor/lora.*`, `tools/train_lora.py` |
+| LoRA: train an adapter, merge it into the weights | `tools/train_lora.py`, `tools/merge_lora_adapter.py`, `csrc/executor/lora.*` |
 | CUDA kernels: attention, RMSNorm, RoPE, sampler, INT8 GEMM + dequant | `csrc/kernels/cuda/` |
 | OpenAI-compatible API | `kiln_py/api/` |
-| Hugging Face comparison | `tools/hf_parity.py` |
+| Hugging Face comparison | `tools/hf_parity.py`, `tools/tokenizer_conformance.py` |
+| Perplexity scoring | `kiln_py/eval/perplexity.py` |
 
 GEMM goes through cuBLAS on purpose; writing a faster one by hand isn't a good
 use of time. The INT8 path uses cuBLAS integer matmul plus a custom dequantize
@@ -101,6 +102,8 @@ Compare against Hugging Face: `pip install -e '.[oracle]'`, then
 csrc/      C++/CUDA
 kiln_py/   Python API and runtime
 tests/     cpp/ (GoogleTest), py/ (pytest)
-tools/     Hugging Face comparison, LoRA training, quantizer cross-check
-bench/     benchmarks
+tools/     Hugging Face comparison, LoRA training and merging, quantizer cross-check
+bench/     benchmarks (CPU script, and a GPU INT8 vs FP32 test)
+assets/    the architecture diagram
+demo.sh    runs everything in one command
 ```

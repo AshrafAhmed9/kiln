@@ -14,9 +14,7 @@ void QuantizeInt8PerChannel(const float* weights, int64_t rows, int64_t cols,
     for (int64_t c = 0; c < cols; ++c)
       max_abs = std::max(max_abs, std::abs(row[c]));
 
-    // If every weight in this row happens to be zero, any nonzero scale
-    // works (0 * anything is still 0) -- 1.0 avoids a division by zero
-    // below without changing the (all-zero) result.
+    // A row of all zeros gets scale 1 so the division below is safe.
     float scale = (max_abs > 0.0f) ? (max_abs / 127.0f) : 1.0f;
     out_scales[r] = scale;
 
@@ -41,23 +39,13 @@ void DequantizeInt8PerChannel(const int8_t* quantized, const float* scales,
 
 namespace {
 
-// Stores a value from [-8, 7] as a small non-negative number in [0, 15] by
-// shifting it up by 8 -- this is what makes it fit cleanly in 4 bits
-// without needing any sign-handling logic when packing or unpacking.
+// Shifts a value from [-8, 7] up by 8 so it fits in 4 bits as 0 to 15.
 uint8_t ToNibble(int value) { return static_cast<uint8_t>(value + 8); }
 int FromNibble(uint8_t nibble) { return static_cast<int>(nibble) - 8; }
 
-}  // namespace
-
-namespace {
-
-// Both functions below assume the row splits evenly into whole groups, and
-// that each group packs evenly into whole bytes (two 4-bit values per
-// byte). If either isn't true, the group boundaries silently drift out of
-// alignment with the byte boundaries -- a caller would get back numbers
-// that don't correspond to what they think they quantized, with no error
-// telling them why. Checking this once, in one place, is cheaper than
-// debugging that mismatch after the fact.
+// Both INT4 functions need rows to split into whole groups, and groups to
+// pack into whole bytes. Otherwise the results would be silently wrong, so
+// this check fails loudly instead.
 void CheckInt4Preconditions(int64_t cols, int64_t group_size) {
   if (group_size % 2 != 0) {
     throw std::invalid_argument(
@@ -66,8 +54,7 @@ void CheckInt4Preconditions(int64_t cols, int64_t group_size) {
   }
   if (cols % group_size != 0) {
     throw std::invalid_argument(
-        "QuantizeInt4GroupWise: group_size must evenly divide cols, or "
-        "the last group would be silently truncated");
+        "QuantizeInt4GroupWise: group_size must evenly divide cols");
   }
 }
 
@@ -141,20 +128,15 @@ void Int8GemmBT(const int8_t* a_quantized, const float* a_scales,
     for (int64_t n = 0; n < N; ++n) {
       const int8_t* b_row = b_quantized_transposed + n * K;
 
-      // INT32 accumulation is the entire point: two INT8 numbers multiply
-      // to at most 127*127 = 16129, and this sums up to K of those --
-      // still nowhere near overflowing a 32-bit integer for any realistic
-      // hidden size, which is why INT32 (not INT8 or INT16) is what GPU
-      // INT8 tensor cores actually accumulate into as well.
+      // Add up the products as whole numbers. Each product is at most
+      // 127 * 127, so a 32-bit total cannot overflow for any real model.
       int32_t acc = 0;
       for (int64_t k = 0; k < K; ++k) {
         acc += static_cast<int32_t>(a_row[k]) * static_cast<int32_t>(b_row[k]);
       }
 
-      // Converting back to a real number happens exactly once per output
-      // element, after every INT8 multiply-add is done -- not per
-      // multiply -- which is what makes this fast: the expensive inner
-      // loop never touches a float at all.
+      // Convert to a decimal once per output, after the loop, so the inner
+      // loop never touches a float.
       c[m * N + n] = static_cast<float>(acc) * a_scale * b_scales[n];
     }
   }

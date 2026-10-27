@@ -1,7 +1,7 @@
-// The pybind11 boundary. Kept thin and audited: this file
-// is the ONLY place allowed to know about both Python and the C++ compute
-// layer. It doesn't do any math itself -- it just wraps the real C++
-// classes (Model, KVCache, the sampler) so Python can call them.
+// The bridge between Python and C++ (built with pybind11). This is the only
+// file that knows about both sides. It does no math; it wraps the C++
+// classes (Model, KVCache, the sampler, the tokenizer) so Python can call
+// them as `kiln_py._C`.
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -23,18 +23,11 @@ namespace kiln {
 
 std::string Ping() { return "pong"; }
 
-// A thin Python-friendly wrapper around Model::Forward. Instead of asking
-// the Python caller to hand us raw memory pointers (which pybind11 could
-// do, but which would be an easy way to accidentally corrupt memory from
-// the Python side), this takes and returns ordinary numpy arrays and does
-// the pointer plumbing itself, once, in this one file.
-// Every numpy array accepted across the boundary below is declared
-// c_style|forcecast: this makes pybind11 copy the data into a plain,
-// contiguous, correctly-typed buffer first if the caller ever passes
-// something else (a transposed view, a non-contiguous slice, a different
-// dtype). Without this, the code below reads the array's raw pointer as
-// if it were a flat contiguous buffer regardless of what it actually is
-// -- silently reading the wrong numbers instead of failing.
+// Python passes numpy arrays, and the C++ code reads them as plain flat
+// memory. These two types make pybind11 first copy any array that is not
+// already flat and the right type (a transposed view, a slice, the wrong
+// dtype) into one that is. Without that, C++ would read the wrong numbers
+// without any error.
 using ContiguousFloatArray =
     py::array_t<float, py::array::c_style | py::array::forcecast>;
 using ContiguousInt32Array =
@@ -91,8 +84,8 @@ py::array_t<float> CudaModelForward(const CudaModel& model,
   auto input = tokens.request();
   if (input.ndim != 1) throw std::invalid_argument("tokens must be 1D");
   const int64_t seq_len = input.shape[0];
-  // The CUDA executor validates token IDs and cache position on the C++ side;
-  // this wrapper only owns safe NumPy pointer and output-shape handling.
+  // The CUDA model checks token ids and cache position itself; this wrapper
+  // only converts between numpy arrays and pointers.
   py::array_t<float> out({seq_len, model.config().vocab_size});
   if (use_cache) {
     model.ForwardCached(static_cast<const int32_t*>(input.ptr), seq_len,
@@ -105,15 +98,11 @@ py::array_t<float> CudaModelForward(const CudaModel& model,
 }
 #endif
 
-// A byte-level tokenizer's decoded output is raw bytes, not necessarily
-// valid UTF-8 text on its own -- especially one word (token) at a time, since
-// a single character in a real alphabet can be spread across more than one
-// token, and an untrained model can output any byte value at all. pybind11
-// would otherwise convert a C++ std::string straight into a Python string by
-// assuming it's valid UTF-8, which crashes the moment that assumption is
-// wrong. Returning raw Python bytes instead hands that decision to the
-// Python side, which knows how to handle it gracefully (see
-// kiln_py/runtime/generate.py).
+// Decoded tokens are raw bytes, and are not always valid text. One character
+// can be split across several tokens, and a random-weight model can output
+// any byte. pybind11 would turn a std::string into a Python str and crash on
+// invalid text, so this returns Python `bytes` instead and lets the Python
+// side decide (see kiln_py/runtime/generate.py).
 py::bytes DecodeToBytes(const BpeTokenizer& tokenizer,
                         const std::vector<int32_t>& ids) {
   return py::bytes(tokenizer.Decode(ids));
@@ -129,10 +118,9 @@ int32_t SampleFromLogits(ContiguousFloatArray logits,
                 previous_tokens, rng);
 }
 
-// Wraps QuantizeInt8PerChannel for Python: takes a 2D numpy array, returns
-// (quantized int8 array, per-row scales) -- used to cross-check this
-// implementation against the independent Python reference in
-// tools/quantize_ref.py (see tests/py/test_quantize.py).
+// Wraps QuantizeInt8PerChannel for Python: takes a 2D numpy array and
+// returns (int8 values, per-row scales). tests/py/test_quantize.py compares
+// it with the separate Python version in tools/quantize_ref.py.
 py::tuple QuantizeInt8PerChannelPy(ContiguousFloatArray weights) {
   auto buf = weights.request();
   int64_t rows = buf.shape[0];

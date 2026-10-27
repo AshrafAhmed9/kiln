@@ -30,8 +30,8 @@ std::string Utf8Encode(uint32_t codepoint) {
   return out;
 }
 
-// Splits a UTF-8 string into a vector of single-codepoint substrings. Used
-// to invert the byte<->unicode mapping during Decode.
+// Splits UTF-8 text into one string per character, so Decode can map each
+// character back to its byte.
 std::vector<std::string> Utf8Codepoints(const std::string& s) {
   std::vector<std::string> out;
   size_t i = 0;
@@ -44,10 +44,10 @@ std::vector<std::string> Utf8Codepoints(const std::string& s) {
   return out;
 }
 
-// GPT-2/ByteLevel pre-tokenization uses Unicode categories. ICU gives the
-// C++ tokenizer the same \p{L}, \p{N}, and whitespace semantics that the
-// Hugging Face tokenizer uses, instead of treating every non-ASCII byte as a
-// letter and splitting punctuation/number runs differently.
+// Cuts text into chunks (words, numbers, punctuation, spaces) before the
+// merge step, using the same rules as Hugging Face's GPT-2 tokenizer. The
+// ICU library supplies the Unicode "letter" and "number" categories those
+// rules need, so non-English text is split the same way as the reference.
 std::vector<std::string> PreTokenize(const std::string& text) {
   static const icu::RegexPattern* pattern = []() {
     UErrorCode status = U_ZERO_ERROR;
@@ -93,11 +93,10 @@ BpeTokenizer BpeTokenizer::Load(const std::string& tokenizer_json_path) {
 
   BpeTokenizer tok;
 
-  // The byte<->unicode table (GPT-2 algorithm): printable Latin-1 ranges
-  // map to themselves; every other byte value (0-255) gets assigned the
-  // next unused codepoint above 255. This makes every byte value map to
-  // *some* visible, single-codepoint symbol, which is what makes byte-level BPE
-  // total over all byte strings.
+  // Build the byte <-> character table (GPT-2 style). Printable bytes stand
+  // for themselves; every other byte gets the next unused character above
+  // 255. So each of the 256 bytes has one visible character, and any text
+  // can be encoded and decoded exactly.
   std::vector<int> printable;
   for (int b = '!'; b <= '~'; ++b) printable.push_back(b);
   for (int b = 0xA1; b <= 0xAC; ++b) printable.push_back(b);
@@ -114,6 +113,7 @@ BpeTokenizer BpeTokenizer::Load(const std::string& tokenizer_json_path) {
     tok.unicode_to_byte_[ch] = static_cast<uint8_t>(b);
   }
 
+  // Read the vocabulary (token text -> id) and the ranked merge list.
   const auto& model = j.contains("model") ? j["model"] : j;
   for (auto& [token, id] : model["vocab"].items()) {
     tok.vocab_[token] = id.get<int32_t>();
@@ -142,6 +142,7 @@ std::vector<int32_t> BpeTokenizer::BpeMergeWord(
     const std::vector<std::string>& symbols) const {
   std::vector<std::string> current = symbols;
 
+  // Repeatedly merge the best-ranked neighboring pair until none can merge.
   while (current.size() > 1) {
     int32_t best_rank = std::numeric_limits<int32_t>::max();
     size_t best_index = 0;

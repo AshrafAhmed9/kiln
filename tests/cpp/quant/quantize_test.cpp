@@ -106,11 +106,8 @@ TEST(QuantizeInt4, RoundTripStaysWithinOneGroupStep) {
   }
 }
 
-// This is the closest this offline session can get to the plan's real
-// deliverable (a perplexity/KL table against WikiText-2, which needs a
-// real trained model and a real dataset, neither available here): a
-// synthetic proxy showing quantized weights, used in a real matmul,
-// produce output close to the full-precision result on random data.
+// Quantized weights used in a real matrix multiply should give a result
+// close to the full-precision one. Checked on random data.
 TEST(QuantizeInt8, QuantizedMatmulStaysCloseToFullPrecisionMatmul) {
   int64_t rows = 16, cols = 16, batch = 4;
   std::mt19937 rng(7);
@@ -151,15 +148,10 @@ TEST(QuantizeInt8, QuantizedMatmulStaysCloseToFullPrecisionMatmul) {
   EXPECT_LT(mean_squared_error, 1.0f);
 }
 
-// the actual INT8xINT8 GEMM (accumulate in INT32, scale once at the
-// end) versus this project's existing quantize-then-dequantize-then-FP32-
-// matmul path: both quantize the same weights the same way, so
-// their outputs should be close to each other (both are approximating the
-// same full-precision answer, from the same quantized weight numbers) --
-// checking that directly is a much tighter, more specific claim than only
-// checking either one against full precision separately, and it's the
-// claim that actually matters: swapping which GEMM strategy computes the
-// quantized answer must not change what "quantized" means.
+// The INT8 matrix multiply (add up in INT32, scale once at the end) and the
+// dequantize-then-FP32 multiply both start from the same quantized weights,
+// so their results should be very close to each other. Comparing them
+// directly is a tighter check than comparing each to full precision.
 TEST(QuantizeInt8, RealInt8GemmMatchesDequantizeThenFp32MatmulPath) {
   int64_t rows = 16, cols = 16, batch = 4;
   std::mt19937 rng(9);

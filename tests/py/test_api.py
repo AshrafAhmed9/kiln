@@ -1,10 +1,8 @@
-"""Tests for the HTTP API. These exercise the actual FastAPI app -- real
-request objects going in, real responses coming out -- but through an
-in-process test client rather than a real network socket, since that's
-faster and doesn't need a port to be free. The model behind these tests is
-the small, randomly-initialized one described in app.py: these tests check
-that the request/response *shapes* are correct and that generation runs to
-completion without crashing, not that the generated words make sense.
+"""Tests for the web API. They call the real FastAPI app through an
+in-process test client (no network port needed). The model behind them is the
+small random-weight one from app.py, so these tests check that requests and
+responses have the right shape and that generation finishes, not that the
+words make sense.
 """
 from concurrent.futures import ThreadPoolExecutor
 
@@ -55,10 +53,7 @@ def test_concurrent_non_streaming_completions_work():
 
 
 def test_same_seed_gives_same_completion():
-    """Generation with a fixed seed must be replayable -- this is the
-    determinism promise the whole project is built on, checked here at the
-    outermost, user-facing layer rather than just deep in the C++ code.
-    """
+    """The same seed must give the same text every time."""
     request_body = {"prompt": "same input", "max_tokens": 5, "seed": 42,
                      "temperature": 1.0}
     first = client.post("/v1/completions", json=request_body).json()

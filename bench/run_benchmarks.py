@@ -1,10 +1,10 @@
-"""Real benchmarks, run on this machine's CPU against the toy (untrained,
-randomly-initialized) model -- there is no GPU or real trained checkpoint
-available in this environment. Every number
-this script prints was actually measured by running the code, not
-estimated. Where an optimization's real payoff only shows up on a GPU
-(raw kernel throughput, INT8 speed), that's stated explicitly rather than
-implied by a CPU number that wouldn't actually demonstrate it.
+"""CPU benchmarks on a small model with random weights. They measure speed,
+not answer quality. Every number printed is timed or counted by running the
+code, and the seeds are fixed so runs are repeatable.
+
+It reports: KV cache vs no cache (time to first token, time between tokens,
+throughput), KV cache memory, and INT8 memory and error. The GPU INT8 speed
+test is separate: bench/int8_gemm_cuda_benchmark.cu.
 
 Usage: PYTHONPATH=. python3 bench/run_benchmarks.py
 """
@@ -79,11 +79,10 @@ def bench_naive_vs_kv_cache(num_new_tokens: int = 20) -> dict:
 
 
 def bench_int8_memory_and_accuracy(rows: int = 64, cols: int = 64) -> dict:
-    """INT8's real, measured-here payoff is memory (4 bytes/weight -> 1
-    byte/weight = exactly 4x, arithmetic, not a guess). Its real speed
-    payoff needs an INT8 GPU kernel this project doesn't have -- stated
-    honestly rather than reported as a CPU number that wouldn't actually
-    demonstrate a GPU speedup.
+    """INT8 stores each weight in 1 byte instead of 4, so memory shrinks
+    almost 4x (the per-row scales add a little). This also measures how much
+    error rounding to INT8 introduces. INT8's speed gain only shows up on a
+    GPU, so it is not measured here.
     """
     rng = np.random.default_rng(5)
     weights = rng.normal(size=(rows, cols)).astype(np.float32)

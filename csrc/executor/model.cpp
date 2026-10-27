@@ -206,10 +206,8 @@ void Model::MergeLoraIntoLayer(int64_t layer_idx, const std::string& which,
   int64_t q_dim = config_.n_heads * config_.head_dim;
   int64_t kv_dim = config_.n_kv_heads * config_.head_dim;
 
-  // Every weight matrix in this project is stored [out_features,
-  // in_features] (see LayerWeights' comment in model.h), so merging a
-  // LoRA adapter into any of them is the same operation with different
-  // dimensions -- this table is just "which matrix, and what shape is it."
+  // Every weight matrix is stored [out_features, in_features], so merging
+  // is the same operation for each one. Only the shape differs.
   if (which == "wq") {
     MergeLoraAdapter(layer.wq.data(), lora_a, lora_b, q_dim, d, rank, scale);
   } else if (which == "wk") {

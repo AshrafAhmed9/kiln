@@ -1,13 +1,11 @@
-// RoPE on the GPU, written by hand in raw CUDA. It passed a small CPU-vs-GPU
-// check on Kaggle's P100.
+// RoPE on the GPU. Same math as csrc/executor/rope.cpp.
 #include <cuda_runtime.h>
 #include <cstdint>
 
 namespace kiln {
 
-// One thread handles one (token, head, pair-of-numbers) triple -- RoPE
-// naturally parallelizes this way, since every pair of numbers is rotated
-// completely independently of every other pair.
+// One thread rotates one pair of numbers. Every pair is independent of the
+// others, so this parallelizes naturally.
 __global__ void RopeKernel(float* x, const int64_t* positions,
                             int64_t n_heads, int64_t head_dim, float theta) {
   int64_t token = blockIdx.x;

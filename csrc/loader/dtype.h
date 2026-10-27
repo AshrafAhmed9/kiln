@@ -6,15 +6,12 @@
 
 namespace kiln {
 
-// On-disk weights are BF16/FP16; the CPU forward pass computes in
-// FP32. These convert one element at a time -- simple and obviously
-// correct, which matters more here than speed: this runs once at load time,
-// not per-token.
+// Checkpoints store weights as 16-bit numbers (BF16 or FP16), but the CPU
+// model computes in 32-bit FP32. These convert one number at a time. That is
+// slow-ish but simple, and it only runs once when a model is loaded.
 
 inline float BF16ToF32(uint16_t bits) {
-  // BF16 is just the top 16 bits of an FP32 (same exponent width, truncated
-  // mantissa), so widening is a left-shift into the high half of a 32-bit
-  // word -- no exponent/mantissa math needed.
+  // BF16 is the top 16 bits of an FP32, so converting is a shift.
   uint32_t as_f32_bits = static_cast<uint32_t>(bits) << 16;
   float result;
   std::memcpy(&result, &as_f32_bits, sizeof(result));
@@ -31,8 +28,7 @@ inline float F16ToF32(uint16_t bits) {
     if (mantissa == 0) {
       result_bits = sign;  // signed zero
     } else {
-      // Subnormal FP16: normalize by hand-shifting the mantissa into the
-      // FP32 exponent range (FP16 bias 15 -> FP32 bias 127).
+      // A tiny FP16 number (subnormal): shift it into FP32's normal range.
       int shift = 0;
       while ((mantissa & 0x400u) == 0) {
         mantissa <<= 1;
@@ -54,8 +50,8 @@ inline float F16ToF32(uint16_t bits) {
   return result;
 }
 
-// Converts one tensor's raw bytes to a freshly allocated FP32 buffer.
-// `out` must have space for `element_count` floats.
+// Converts one tensor's raw bytes to FP32. `out` must have room for
+// `element_count` floats.
 inline void ConvertToF32(const TensorView& view, size_t element_count,
                          float* out) {
   if (view.dtype == DType::kF32) {

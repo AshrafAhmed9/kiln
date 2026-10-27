@@ -1,6 +1,7 @@
-// Dense matrix multiplication is deliberately delegated to cuBLAS. Kiln's
-// hand-written CUDA work is attention, RMSNorm, and sampling; replacing
-// cuBLAS here would add code without adding an honest learning result.
+// Matrix multiplication on the GPU is handed to cuBLAS, NVIDIA's own
+// library. It is already very fast, so writing a worse version by hand would
+// add code and gain nothing. The hand-written kernels are attention, RMSNorm,
+// RoPE and sampling.
 #include <cublas_v2.h>
 
 #include <cstdint>

@@ -13,15 +13,11 @@ void ApplyRope(float* x, const int64_t* positions, int64_t n_tokens,
     for (int64_t h = 0; h < n_heads; ++h) {
       float* head = x + t * n_heads * head_dim + h * head_dim;
       for (int64_t j = 0; j < half; ++j) {
-        // Each number in a head is paired with the number half the head's
-        // width away from it (position j pairs with position j+half), and
-        // that pair gets rotated together by an angle that depends on the
-        // token's position in the sentence and on which pair (j) this is.
-        // Llama pairs numbers this way (far apart); some other models pair
-        // neighbors (j and j+1) instead. The code still runs either way if
-        // you pick the wrong pairing -- it just quietly disagrees with the
-        // reference model, which is exactly the kind of bug the parity
-        // checks exist to catch.
+        // Number j is paired with number j + half and the pair is rotated
+        // by an angle that grows with the word's position. Llama pairs
+        // numbers this way; other models pair neighbors instead. Using the
+        // wrong pairing still runs but gives wrong answers, which the
+        // Hugging Face comparison would catch.
         float freq = std::pow(theta, -2.0f * static_cast<float>(j) /
                                          static_cast<float>(head_dim));
         float angle = pos * freq;

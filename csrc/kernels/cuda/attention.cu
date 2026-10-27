@@ -1,10 +1,9 @@
-// Causal grouped-query attention on the GPU. It passed a small CPU-vs-GPU
-// check on Kaggle's P100. Deliberately mirrors the already-tested
-// CPU version (csrc/executor/attention.cpp) step for step -- compute every
-// visible score, find the largest, turn scores into normalized weights,
-// then take the weighted average of the values -- just with each step
-// spread across threads instead of a single-threaded loop. One GPU block
-// handles one (query token, attention head) pair.
+// Attention on the GPU. It does the same steps as the CPU version in
+// csrc/executor/attention.cpp (score every visible word, find the largest
+// score, turn scores into weights, take the weighted average of the values),
+// but spreads each step across many threads. One GPU block handles one
+// (word, attention head) pair. Checked against the CPU version in
+// tests/cpp/cuda_kernels_test.cu.
 #include <cuda_runtime.h>
 #include <cstdint>
 #include <float.h>

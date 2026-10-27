@@ -32,10 +32,8 @@ TEST(PagedKVCache,
   int64_t block = cache.AllocateBlock();
   cache.DecRef(block);  // returns it to the pool -- ref count is now 0
 
-  // Freeing it again is a real caller bug (a double-free): this must be
-  // reported the same way in every build, not just crash an assert in
-  // debug builds while silently corrupting the free pool in release ones
-  // (the exact mistake already made and fixed once in Arena).
+  // Freeing it again is a caller bug (a double free). It must throw in
+  // every build, not just in debug builds where an assert() would fire.
   EXPECT_THROW(cache.DecRef(block), std::runtime_error);
 }
 
@@ -46,11 +44,10 @@ TEST(PagedKVCache, RunningOutOfBlocksFailsClosedInsteadOfCrashing) {
             -1);  // the pool is empty -- reported, not crashed into
 }
 
-// A randomized property test in the same spirit as the scheduler's: throw
-// a long, seeded sequence of allocate/free operations at the cache and
-// check, after every single one, that the books still balance -- every
-// block is either free or owned by exactly the sequences that hold it,
-// and the pool never "loses" or "duplicates" a block.
+// A randomized test: run a long, seeded series of allocate and free
+// operations on the cache, and after each one check that the books still
+// balance. Every block is either free or owned by exactly the texts that
+// hold it, and no block is ever lost or duplicated.
 TEST(PagedKVCache, BookkeepingStaysConsistentUnderRandomOperations) {
   const int64_t num_blocks = 20;
   PagedKVCache cache(1, num_blocks, 4, 1, 2);

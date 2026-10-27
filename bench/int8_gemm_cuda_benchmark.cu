@@ -69,9 +69,8 @@ float TimeMedianMs(int iterations, T&& launch_and_sync) {
 
 int main(int argc, char** argv) {
   if (!DeviceSupportsInt8TensorCores()) {
-    std::cout << "SKIPPED: this GPU's compute capability is below 6.1 -- "
-                 "cuBLAS's INT8 tensor-core path isn't available here. "
-                 "Real, named hardware gap, not a benchmark failure.\n";
+    std::cout << "SKIPPED: this GPU's compute capability is below 6.1, so "
+                 "cuBLAS's INT8 path is not available.\n";
     return 0;
   }
 

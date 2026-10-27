@@ -9,25 +9,22 @@ namespace kiln {
 
 enum class DType { kF32, kF16, kBF16 };
 
-// A zero-copy view into one tensor's bytes inside the mmap'd file. `data`
-// points directly into the mapping -- no allocation, no copy. Valid only as
-// long as the owning SafetensorsFile is alive.
+// One tensor inside the file. `data` points straight into the memory-mapped
+// file (nothing is copied), so it is only valid while the SafetensorsFile
+// that produced it is alive.
 struct TensorView {
   const std::byte* data;
   DType dtype;
   std::vector<int64_t> shape;
 };
 
-// Parses a .safetensors file: an 8-byte little-endian header length, that
-// many bytes of JSON describing each tensor's dtype/shape/byte-offsets, then
-// the raw tensor bytes. Loads via mmap so TensorView::data is a direct
-// pointer into the file, which makes this format a zero-copy fit.
+// Reads a .safetensors file: 8 bytes giving the header length, a JSON header
+// describing each tensor (type, shape, where its bytes are), then the raw
+// bytes. The file is memory-mapped instead of read into memory.
 class SafetensorsFile {
  public:
-  // Throws std::runtime_error with a specific reason on any corruption:
-  // truncated header, unparseable JSON, or a tensor whose offsets run past
-  // the data region. Fails loudly at load time rather than handing back a
-  // dangling view.
+  // Throws with a specific reason if the file is damaged (cut-off header,
+  // bad JSON, or a tensor that runs past the end of the data).
   static SafetensorsFile Load(const std::string& path);
 
   ~SafetensorsFile();
@@ -45,7 +42,7 @@ class SafetensorsFile {
  private:
   SafetensorsFile() = default;
 
-  void* mapped_ = nullptr;  // mmap base address
+  void* mapped_ = nullptr;  // where the file is mapped in memory
   size_t mapped_size_ = 0;
   std::unordered_map<std::string, TensorView> tensors_;
 };

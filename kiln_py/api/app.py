@@ -5,19 +5,17 @@ changes. This file only handles requests coming in and answers going out --
 it doesn't do any of the actual math itself; it calls into
 kiln_py.runtime.generate, which calls into the real C++ model.
 
-Two backends, picked at startup by environment variable:
+Two backends, picked at startup by environment variable. Both serve one
+request at a time:
 
 - Default (no env vars set): a small, randomly-initialized toy model with a
-  byte-level placeholder tokenizer -- there's no real checkpoint bundled
-  with this repo, so this is what runs out of the box. The *shape* of every
-  request and response is real and correct; the words the model produces
-  are not.
+  byte-level placeholder tokenizer, so the API and its tests run without a
+  checkpoint. The shape of every request and response is real; the words
+  the model produces are not.
 - KILN_CHECKPOINT_DIR=<path to a real Llama-family HF checkpoint> (and
   optionally KILN_DEVICE=cuda): loads real trained weights and a real BPE
-  tokenizer via kiln_py.api.real_checkpoint, and serves them on the real
-  forward pass, CPU or GPU depending on KILN_DEVICE. That path serves one
-  request at a time (see real_checkpoint.py for why) instead of the toy
-  path's continuous batching.
+  tokenizer via kiln_py.api.real_checkpoint, on CPU or GPU depending on
+  KILN_DEVICE.
 """
 from __future__ import annotations
 
@@ -29,18 +27,10 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import Response, StreamingResponse
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from kiln_py.metrics import (
-    completion_latency_seconds,
-    completions_total,
-    tokens_generated_total,
-)
-
 from kiln_py import _C
-from kiln_py.api.batching_service import CompletionBatchService
 from kiln_py.api.real_checkpoint import RealCheckpointService, load_real_model_and_tokenizer
 from kiln_py.runtime.byte_tokenizer import write_byte_level_tokenizer_json
 
@@ -48,10 +38,8 @@ app = FastAPI(title="Kiln", description="An LLM inference engine, built from scr
 
 
 def _build_toy_model_and_tokenizer():
-    """Creates the small, randomly-initialized model and the byte-level
-    tokenizer this demo API serves. A real deployment would instead load a
-    real trained checkpoint from disk with Model.load_from_safetensors.
-    """
+    """The small random-weight model and byte-level tokenizer served when no
+    checkpoint is set."""
     config = _C.ModelConfig()
     config.vocab_size = 256  # one token per possible raw byte -- see byte_tokenizer.py
     config.hidden_size = 32
@@ -76,17 +64,13 @@ def _build_toy_model_and_tokenizer():
 _CHECKPOINT_DIR = os.environ.get("KILN_CHECKPOINT_DIR")
 _DEVICE = os.environ.get("KILN_DEVICE", "cpu")
 
-_completion_batches: CompletionBatchService | RealCheckpointService
 if _CHECKPOINT_DIR:
     _model, _tokenizer = load_real_model_and_tokenizer(Path(_CHECKPOINT_DIR), _DEVICE)
     _MODEL_NAME = f"kiln-real:{Path(_CHECKPOINT_DIR).name}:{_DEVICE}"
-    _completion_batches = RealCheckpointService(_model, _tokenizer)
 else:
     _MODEL_NAME = "kiln-toy"
     _model, _tokenizer = _build_toy_model_and_tokenizer()
-    _completion_batches = CompletionBatchService(
-        _model, _tokenizer, max_batch_tokens=_model.config.max_seq_len
-    )
+_service = RealCheckpointService(_model, _tokenizer)
 
 
 class CompletionRequest(BaseModel):
@@ -122,12 +106,9 @@ def create_completion(request: CompletionRequest):
             media_type="text/event-stream",
         )
 
-    completions_total.inc()
-    with completion_latency_seconds.time():
-        text = _completion_batches.complete(
-            request.prompt, request.max_tokens, sampler_config, request.seed
-        )
-    tokens_generated_total.inc(request.max_tokens)
+    text = _service.complete(
+        request.prompt, request.max_tokens, sampler_config, request.seed
+    )
 
     return {
         "id": f"cmpl-{uuid.uuid4().hex[:16]}",
@@ -147,7 +128,7 @@ def _stream_completion(request: CompletionRequest, sampler_config):
     appears to type itself out live, instead of showing up all at once
     after a long pause.
     """
-    for next_token in _completion_batches.stream(
+    for next_token in _service.stream(
         request.prompt, request.max_tokens, sampler_config, request.seed
     ):
         # Same reasoning as in kiln_py/runtime/generate.py: a byte-level
@@ -169,9 +150,4 @@ def _stream_completion(request: CompletionRequest, sampler_config):
 @app.get("/healthz")
 def healthz():
     return {"status": "ok", "model": _MODEL_NAME}
-
-
-@app.get("/metrics")
-def metrics():
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 

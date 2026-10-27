@@ -26,32 +26,6 @@ seems reasonable on its own -- the fix that mattered wasn't fixing the
 assert's wording, it was noticing the design had two contracts instead of
 one.
 
-## Phase 5 — admission control that checked the wrong number
-
-**What broke:** the scheduler let a new request in in as long as its
-*current* size fit inside the remaining budget. Since every running
-request grows by one word every step, a batch that fit perfectly the
-moment a request was admitted could still overflow its budget a few steps
-later, once everyone already running had grown some more.
-
-**How it was caught:** not by a failing test at first -- by re-reading the
-scheduler's own logic while writing its randomized invariant test
-(`test_memory_budget_is_never_exceeded_under_random_arrivals`) and
-realizing the check being written (`tokens_reserved() <= max_batch_tokens`
-after every step) would only be meaningful if admission itself reserved the
-right number up front.
-
-**The fix:** admission now checks a request's worst-case final size (its
-prompt length plus its full allowance of new words), not its size right
-now -- matching how a cache that can't be resized after the fact actually
-has to be managed.
-
-**What I misunderstood:** I was thinking about "does it fit right now,"
-which is the natural first question, without carrying through the
-follow-up question: does it still fit after it's allowed to grow? Any
-system where one thing's size increases over time needs its admission
-decisions to be based on where that thing will end up, not where it starts.
-
 ## Phase 6 — raw bytes assumed to be text
 
 **What broke:** the streaming API endpoint crashed with a Unicode decoding
@@ -97,48 +71,6 @@ steps -- skipping the second one leaves the "write" correct but the
 describing what it does is worth treating as a claim to verify against the
 code, not just documentation to trust.
 
-## Phase 18 — two real bugs, caught only by actually building and running the Docker image
-
-**What broke (bug 1):** the C++ compute library (`kiln_cpp`) was built as
-a plain static library with no position-independent code flag. Linking a
-static library like that into a *shared* object (the `_C` pybind11
-extension) works by coincidence on macOS, but fails outright on Linux.
-
-**How it was caught:** actually running `docker build` against the real
-Dockerfile, on this machine, rather than writing the Dockerfile and
-assuming it would work. The build failed with a wall of linker errors
-("dangerous relocation... recompile with -fPIC").
-
-**The fix:** `set_target_properties(kiln_cpp PROPERTIES
-POSITION_INDEPENDENT_CODE ON)` in `CMakeLists.txt`.
-
-**What I misunderstood:** I had verified this build extensively on one
-platform (macOS, this development machine) and let that stand in for "the
-build works," without noticing that a real, meaningful difference in how
-the two platforms link shared objects meant local verification here
-didn't actually prove anything about Linux, which is where this almost
-always actually gets deployed.
-
-**What broke (bug 2):** after fixing bug 1, the built image's `CMD`
-(`uvicorn ...`) failed with "executable file not found in $PATH." The
-multi-stage Dockerfile's final stage copied installed Python *packages*
-(`site-packages`) from the build stage, but not the installed console
-*scripts* (`/usr/local/bin/uvicorn` and friends) that `pip install` also
-creates.
-
-**How it was caught:** the same way — running the container after fixing
-bug 1 and watching it fail immediately, rather than assuming a
-successful `docker build` meant a working container.
-
-**The fix:** also copy `/usr/local/bin` from the build stage into the
-final stage.
-
-**What I misunderstood:** I treated "the Python packages are installed"
-as equivalent to "the tools built from those packages are available,"
-when `pip install` actually produces two separate things in two separate
-places — and a multi-stage Docker build that copies files explicitly, by
-path, will only include exactly what's named, not "everything pip did."
-
 ## Phase 7 (re-verification) — a version pin broke a previously-working CUDA build
 
 **What broke:** re-running the CUDA build on a fresh Kaggle GPU session
@@ -171,40 +103,6 @@ median of 1000 iterations). Nsight Compute profiling was attempted in the
 same run and failed with `ERR_NVGPUCTRPERM` — Kaggle's container does not
 grant GPU performance-counter access — a real, named platform limitation,
 not a build bug.
-
-## Phase 25 (attempted) — Nsight profiling blocked by GCP capacity, not by anything in this repo
-
-**What happened:** `tools/run_gcp_gpu_validation.sh` (the intended path around
-Kaggle's perf-counter restriction, since a real GCE VM has root) was run five
-times against `kiln-gpu-profiling`, across `nvidia-tesla-t4` in
-`us-central1-a`, `us-east1-c`, `us-west1-b`, and `europe-west4-a`, and
-`nvidia-tesla-p100` in `us-central1-a` and `us-central1-c`. Every attempt
-failed at `gcloud compute instances create` with `ZONE_RESOURCE_POOL_EXHAUSTED`
-(one also hit "accelerator type not found" for P100 in a zone that doesn't
-offer it) — the project has real GPU quota (verified via `gcloud compute
-regions describe`) and billing is enabled, but GCP had no on-demand GPU
-capacity to hand out in any zone tried, at the time this was run.
-
-**Why this is recorded here instead of silently retried forever:** none of
-these attempts created a billable resource — the script's `trap cleanup`
-never fires because there's nothing to clean up when `instances create`
-itself fails — so this cost nothing, but it's still a real, reproducible
-result worth keeping rather than quietly giving up. Nsight profiling stays a
-named, honest gap until either GCP capacity frees up in some zone, a
-different cloud GPU provider is used, or physical GPU access becomes
-available.
-
-**Retried (Phase 28):** eight more zones (`us-central1-b`, `us-central1-f`,
-`us-east4-a`, `asia-east1-a`, `asia-southeast1-b`, `southamerica-east1-c`,
-`europe-west1-b`, `us-west1-a`) attempted against `nvidia-tesla-t4`, all
-failing at `instances create` with the same
-`ZONE_RESOURCE_POOL_EXHAUSTED` / `resource_availability` error before any VM
-was created. Eleven zone attempts total across both sessions, zero cost each
-time. This is a real, sustained lack of on-demand GPU capacity on GCP's free
-side of things at the time of writing, not a bug in the script or a mistake
-in zone selection — the accelerator type is confirmed valid in every zone
-tried (`gcloud compute accelerator-types describe` succeeds in all of them);
-there simply isn't a free VM slot to attach it to.
 
 ## Phase 28 — running the existing HF-parity fixture and tokenizer test for real, on a second checkpoint
 

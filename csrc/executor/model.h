@@ -60,49 +60,6 @@ class Model {
                float* out_logits,
                std::vector<std::vector<float>>* layer_outputs = nullptr) const;
 
-  // Runs one cached decode token for every sequence in a batch. The matrix
-  // work is shared across the batch, but each sequence keeps a separate KV
-  // cache and absolute position, which is the minimum contract real
-  // continuous batching needs. `tokens`, `start_positions`, and `caches`
-  // each have batch_size entries; out_logits is [batch_size, vocab_size].
-  void ForwardDecodeBatch(const int32_t* tokens, int64_t batch_size,
-                          const int64_t* start_positions,
-                          KVCache* const* caches, float* out_logits) const;
-
-  // Prefills several sequences of *different* lengths in one call, with no
-  // padding at all -- this is what Phase 23's note calls "ragged prefill":
-  // `tokens` is every sequence's real tokens concatenated back-to-back
-  // (no filler), `seq_lengths` gives each sequence's real length, and
-  // `caches` gives each sequence's own (already-existing, possibly
-  // non-empty for a continued prefill) KV cache. Every matmul in every
-  // layer runs once over the whole concatenated batch -- exactly the
-  // total real work, never padding's wasted rows -- and only attention
-  // treats each sequence as its own separate lane, by calling the same
-  // tested Attention() function once per sequence on its own slice, the
-  // same pattern the padded Forward() path above already uses.
-  // out_logits is [total_tokens, vocab_size], where total_tokens is the
-  // sum of seq_lengths -- the caller picks out whichever row(s) it wants
-  // (usually just the last row of each sequence).
-  void ForwardPrefillBatch(const int32_t* tokens, int64_t num_sequences,
-                           const int64_t* seq_lengths, KVCache* const* caches,
-                           float* out_logits) const;
-
-  // Tensor-parallel forward pass, simulated across `world_size` ranks in
-  // this one process -- the Megatron-style scheme ADR-012/Phase 12 already
-  // proved exact on synthetic matrices in
-  // kiln_py/runtime/tensor_parallel_sim.py, run here for real against this
-  // model's own weights. Attention is column-parallel (each rank owns a
-  // contiguous slice of the heads and computes attention for just those heads
-  // -- no communication needed, since one head's attention never depends on
-  // another head's numbers) and the output/down projections are row-parallel
-  // (each rank computes its own partial contribution to the full output; the
-  // ranks' partial sums are added together, standing in for the one real
-  // network all-reduce a multi-GPU run would need per block). Requires n_heads,
-  // n_kv_heads, and ffn_hidden to all divide evenly by world_size.
-  void ForwardTensorParallelSimulated(const int32_t* tokens, int64_t seq_len,
-                                      int64_t world_size,
-                                      float* out_logits) const;
-
   const ModelConfig& config() const { return config_; }
 
   // Folds a trained LoRA adapter into one weight matrix of one layer, in

@@ -21,26 +21,6 @@ def test_healthz():
     assert response.json()["status"] == "ok"
 
 
-def test_metrics_endpoint_reflects_a_real_completion():
-    before = client.get("/metrics").text
-    client.post("/v1/completions", json={"prompt": "metrics test", "max_tokens": 2})
-    after = client.get("/metrics").text
-
-    # A real counter incrementing, not a static/mocked page -- prove it by
-    # actually parsing out the number rather than just checking the text
-    # changed at all.
-    def read_counter(text: str, name: str) -> float:
-        for line in text.splitlines():
-            if line.startswith(name + " "):
-                return float(line.split()[-1])
-        return 0.0
-
-    assert read_counter(after, "kiln_completions_total") > read_counter(
-        before, "kiln_completions_total")
-
-
-
-
 def test_completion_returns_openai_shaped_response():
     response = client.post("/v1/completions", json={
         "prompt": "hello",

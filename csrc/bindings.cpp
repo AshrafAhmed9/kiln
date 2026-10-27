@@ -78,79 +78,6 @@ py::list ModelForwardHiddenStates(const Model& model,
   return out;
 }
 
-py::array_t<float> ModelForwardDecodeBatch(const Model& model,
-                                           ContiguousInt32Array tokens,
-                                           std::vector<int64_t> positions,
-                                           py::list caches) {
-  auto tokens_buf = tokens.request();
-  int64_t batch_size = tokens_buf.shape[0];
-  if (tokens_buf.ndim != 1 ||
-      static_cast<int64_t>(positions.size()) != batch_size ||
-      static_cast<int64_t>(py::len(caches)) != batch_size) {
-    throw std::invalid_argument(
-        "forward_decode_batch expects equally sized 1D tokens, positions, and "
-        "caches");
-  }
-  std::vector<KVCache*> cache_ptrs;
-  cache_ptrs.reserve(batch_size);
-  for (py::handle cache : caches) cache_ptrs.push_back(cache.cast<KVCache*>());
-
-  py::array_t<float> out({batch_size, model.config().vocab_size});
-  model.ForwardDecodeBatch(static_cast<const int32_t*>(tokens_buf.ptr),
-                           batch_size, positions.data(), cache_ptrs.data(),
-                           static_cast<float*>(out.request().ptr));
-  return out;
-}
-
-// Ragged prefill: `tokens` is every sequence's real tokens concatenated
-// back-to-back (no padding), `seq_lengths` gives each one's real length,
-// and `caches` gives each one's own KV cache. Mirrors
-// ModelForwardDecodeBatch's shape above -- the Python-side change per
-// call, C++ side does the real work through the exact same binding
-// pattern.
-py::array_t<float> ModelForwardPrefillBatch(const Model& model,
-                                            ContiguousInt32Array tokens,
-                                            std::vector<int64_t> seq_lengths,
-                                            py::list caches) {
-  auto tokens_buf = tokens.request();
-  int64_t num_sequences = static_cast<int64_t>(seq_lengths.size());
-  if (tokens_buf.ndim != 1 ||
-      static_cast<int64_t>(py::len(caches)) != num_sequences) {
-    throw std::invalid_argument(
-        "forward_prefill_batch expects one seq_length and one cache per "
-        "sequence");
-  }
-  int64_t total_tokens = 0;
-  for (int64_t len : seq_lengths) total_tokens += len;
-  if (total_tokens != tokens_buf.shape[0]) {
-    throw std::invalid_argument(
-        "forward_prefill_batch: seq_lengths must sum to len(tokens)");
-  }
-
-  std::vector<KVCache*> cache_ptrs;
-  cache_ptrs.reserve(num_sequences);
-  for (py::handle cache : caches) cache_ptrs.push_back(cache.cast<KVCache*>());
-
-  py::array_t<float> out({total_tokens, model.config().vocab_size});
-  model.ForwardPrefillBatch(static_cast<const int32_t*>(tokens_buf.ptr),
-                            num_sequences, seq_lengths.data(),
-                            cache_ptrs.data(),
-                            static_cast<float*>(out.request().ptr));
-  return out;
-}
-
-py::array_t<float> ModelForwardTensorParallelSimulated(
-    const Model& model, ContiguousInt32Array tokens, int64_t world_size) {
-  auto input = tokens.request();
-  if (input.ndim != 1) throw std::invalid_argument("tokens must be 1D");
-  int64_t seq_len = input.shape[0];
-  py::array_t<float> out({seq_len, model.config().vocab_size});
-  model.ForwardTensorParallelSimulated(static_cast<const int32_t*>(input.ptr),
-                                       seq_len, world_size,
-                                       static_cast<float*>(out.request().ptr));
-  return out;
-}
-
 void ModelMergeLoraIntoLayer(Model& model, int64_t layer_idx,
                              const std::string& which,
                              ContiguousFloatArray lora_a,
@@ -255,13 +182,6 @@ PYBIND11_MODULE(_C, m) {
            py::arg("cache") = nullptr)
       .def("forward_hidden_states", &kiln::ModelForwardHiddenStates,
            py::arg("tokens"))
-      .def("forward_decode_batch", &kiln::ModelForwardDecodeBatch,
-           py::arg("tokens"), py::arg("positions"), py::arg("caches"))
-      .def("forward_prefill_batch", &kiln::ModelForwardPrefillBatch,
-           py::arg("tokens"), py::arg("seq_lengths"), py::arg("caches"))
-      .def("forward_tensor_parallel_simulated",
-           &kiln::ModelForwardTensorParallelSimulated, py::arg("tokens"),
-           py::arg("world_size"))
       .def("merge_lora_into_layer", &kiln::ModelMergeLoraIntoLayer,
            py::arg("layer_idx"), py::arg("which"), py::arg("lora_a"),
            py::arg("lora_b"), py::arg("scale"))

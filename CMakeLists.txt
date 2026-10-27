@@ -44,7 +44,6 @@ find_package(ICU REQUIRED COMPONENTS i18n uc)
 # pybind11 boundary. Kept as its own static lib so tests link it directly,
 # without going through Python.
 add_library(kiln_cpp STATIC
-  csrc/memory/arena.cpp
   csrc/loader/safetensors.cpp
   csrc/tokenizer/bpe.cpp
   csrc/executor/gemm.cpp
@@ -55,10 +54,8 @@ add_library(kiln_cpp STATIC
   csrc/executor/model.cpp
   csrc/kv/kv_cache.cpp
   csrc/kv/paged_kv_cache.cpp
-  csrc/kv/prefix_cache_measurement.cpp
   csrc/executor/paged_attention.cpp
   csrc/executor/sampler.cpp
-  csrc/executor/batch.cpp
   csrc/quant/quantize.cpp
   csrc/executor/lora.cpp
 )
@@ -95,18 +92,6 @@ if(KILN_BUILD_CUDA)
   target_link_libraries(kiln_cuda PUBLIC CUDA::cudart CUDA::cublas)
   set_target_properties(kiln_cuda PROPERTIES
     POSITION_INDEPENDENT_CODE ON
-    CUDA_STANDARD 17
-    CUDA_STANDARD_REQUIRED ON
-    CUDA_ARCHITECTURES ${KILN_CUDA_ARCHITECTURES}
-  )
-
-  # This is deliberately a separate executable instead of a Python binding:
-  # it times the same raw CUDA RoPE entry point used by the GPU correctness
-  # test, without adding a second language boundary to the measurement.
-  add_executable(kiln_rope_cuda_benchmark bench/rope_cuda_benchmark.cu)
-  target_link_libraries(kiln_rope_cuda_benchmark PRIVATE kiln_cuda CUDA::cudart)
-  target_include_directories(kiln_rope_cuda_benchmark PRIVATE csrc)
-  set_target_properties(kiln_rope_cuda_benchmark PROPERTIES
     CUDA_STANDARD 17
     CUDA_STANDARD_REQUIRED ON
     CUDA_ARCHITECTURES ${KILN_CUDA_ARCHITECTURES}
@@ -151,9 +136,3 @@ endif()
 
 enable_testing()
 add_subdirectory(tests/cpp)
-
-# This intentionally measures a seeded local workload, not traffic. Keeping
-# it as a small C++ executable means it exercises the same paged-cache code
-# that serves sequences instead of estimating sharing from a spreadsheet.
-add_executable(kiln_prefix_cache_benchmark bench/prefix_cache_hit_rate.cpp)
-target_link_libraries(kiln_prefix_cache_benchmark PRIVATE kiln_cpp)

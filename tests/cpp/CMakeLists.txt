@@ -7,7 +7,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(googletest)
 
 add_executable(kiln_cpp_tests
-  memory/arena_test.cpp
   loader/safetensors_test.cpp
   tokenizer/bpe_test.cpp
   executor/gemm_test.cpp
@@ -17,10 +16,8 @@ add_executable(kiln_cpp_tests
   executor/model_test.cpp
   kv/kv_cache_test.cpp
   kv/paged_kv_cache_test.cpp
-  kv/prefix_cache_measurement_test.cpp
   executor/paged_attention_test.cpp
   executor/sampler_test.cpp
-  executor/batch_test.cpp
   quant/quantize_test.cpp
   executor/parity_harness_test.cpp
   executor/lora_test.cpp

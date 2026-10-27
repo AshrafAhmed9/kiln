@@ -117,123 +117,84 @@ Model Model::LoadFromSafetensors(const ModelConfig& config,
   return model;
 }
 
-void Model::Forward(const int32_t* tokens, int64_t batch_size, int64_t seq_len,
-                    const int64_t* valid_lengths, int64_t start_pos,
+void Model::Forward(const int32_t* tokens, int64_t seq_len, int64_t start_pos,
                     KVCache* cache, float* out_logits,
                     std::vector<std::vector<float>>* layer_outputs) const {
-  // A cache only makes sense for one sentence at a time in this project's
-  // current design (the cache is built for a single sequence; batching
-  // several sentences together with no cache at all is a separate
-  // case). Passing both together isn't a case anyone should hit on purpose,
-  // so it's rejected loudly here rather than silently doing the wrong thing
-  // (quietly ignoring the cache would be far worse than an error, since the
-  // caller would get an answer back and have no way to know it was computed
-  // without the caching they asked for).
-  if (cache != nullptr && batch_size > 1) {
-    throw std::invalid_argument(
-        "Model::Forward: a KV cache can only be used with batch_size == 1 "
-        "in this project's current design.");
-  }
-
   int64_t d = config_.hidden_size;
   int64_t q_dim = config_.n_heads * config_.head_dim;
   int64_t kv_dim = config_.n_kv_heads * config_.head_dim;
-  int64_t n_rows = batch_size * seq_len;
 
-  // Step 1: turn each input word (an integer ID) into its list of numbers
-  // (its "embedding") by copying that row out of the embedding table.
-  std::vector<float> x(n_rows * d);
-  for (int64_t r = 0; r < n_rows; ++r) {
-    int32_t token = tokens[r];
-    std::memcpy(x.data() + r * d, tok_embeddings.data() + token * d,
+  // Step 1: turn each word (an integer id) into its list of numbers (its
+  // "embedding") by copying that row out of the embedding table.
+  std::vector<float> x(seq_len * d);
+  for (int64_t r = 0; r < seq_len; ++r) {
+    std::memcpy(x.data() + r * d, tok_embeddings.data() + tokens[r] * d,
                 d * sizeof(float));
   }
 
-  // Every token in this call gets an absolute position in its own sentence
-  // -- item 0's tokens start at start_pos, item 1's tokens also start at
-  // start_pos (each batch item is its own independent sentence, all lined
-  // up to begin at the same offset for this simple padded-batch case).
-  std::vector<int64_t> positions(n_rows);
-  for (int64_t b = 0; b < batch_size; ++b) {
-    for (int64_t i = 0; i < seq_len; ++i) {
-      positions[b * seq_len + i] = start_pos + i;
-    }
-  }
+  // Where each word sits in the whole text.
+  std::vector<int64_t> positions(seq_len);
+  for (int64_t i = 0; i < seq_len; ++i) positions[i] = start_pos + i;
 
-  std::vector<float> normed(n_rows * d);
-  std::vector<float> q(n_rows * q_dim);
-  std::vector<float> k(n_rows * kv_dim);
-  std::vector<float> v(n_rows * kv_dim);
-  std::vector<float> attn_out(n_rows * q_dim);
-  std::vector<float> proj(n_rows * d);
-  std::vector<float> mlp_out(n_rows * d);
+  // Scratch space reused by every layer.
+  std::vector<float> normed(seq_len * d);
+  std::vector<float> q(seq_len * q_dim);
+  std::vector<float> k(seq_len * kv_dim);
+  std::vector<float> v(seq_len * kv_dim);
+  std::vector<float> attn_out(seq_len * q_dim);
+  std::vector<float> proj(seq_len * d);
+  std::vector<float> mlp_out(seq_len * d);
 
   for (int64_t layer_idx = 0; layer_idx < config_.n_layers; ++layer_idx) {
     const LayerWeights& layer = layers[layer_idx];
 
-    // "Read the sentence so far, decide what matters" step: attention.
-    RmsNorm(x.data(), layer.attn_norm.data(), normed.data(), n_rows, d,
+    // Step 2, attention: each word looks back at the earlier words.
+    RmsNorm(x.data(), layer.attn_norm.data(), normed.data(), seq_len, d,
             config_.rms_eps);
-    GemmBT(normed.data(), layer.wq.data(), q.data(), n_rows, d, q_dim);
-    GemmBT(normed.data(), layer.wk.data(), k.data(), n_rows, d, kv_dim);
-    GemmBT(normed.data(), layer.wv.data(), v.data(), n_rows, d, kv_dim);
+    GemmBT(normed.data(), layer.wq.data(), q.data(), seq_len, d, q_dim);
+    GemmBT(normed.data(), layer.wk.data(), k.data(), seq_len, d, kv_dim);
+    GemmBT(normed.data(), layer.wv.data(), v.data(), seq_len, d, kv_dim);
 
-    // Rotary position embedding stamps each token's position into its
-    // query/key numbers, so attention naturally knows how far apart two
-    // tokens are without needing a separate "position" input.
-    ApplyRope(q.data(), positions.data(), n_rows, config_.n_heads,
+    // RoPE stamps each word's position into its query and key numbers, so
+    // attention knows how far apart two words are.
+    ApplyRope(q.data(), positions.data(), seq_len, config_.n_heads,
               config_.head_dim, config_.rope_theta);
-    ApplyRope(k.data(), positions.data(), n_rows, config_.n_kv_heads,
+    ApplyRope(k.data(), positions.data(), seq_len, config_.n_kv_heads,
               config_.head_dim, config_.rope_theta);
 
-    if (batch_size == 1) {
-      const float* k_for_attn = k.data();
-      const float* v_for_attn = v.data();
-      int64_t kv_len = seq_len;
-
-      if (cache != nullptr) {
-        cache->Append(layer_idx, k.data(), v.data(), seq_len);
-        k_for_attn = cache->K(layer_idx);
-        v_for_attn = cache->V(layer_idx);
-        kv_len = cache->length() + seq_len;
-      }
-
-      Attention(q.data(), k_for_attn, v_for_attn, attn_out.data(), seq_len,
-                kv_len, config_.n_heads, config_.n_kv_heads, config_.head_dim,
-                start_pos);
-    } else {
-      // Padded batch: every sentence in the batch keeps to its
-      // own lane and never attends into another sentence's tokens or
-      // padding -- we just run the same attention function once per
-      // sentence, pointed at that sentence's own slice of the batch.
-      for (int64_t b = 0; b < batch_size; ++b) {
-        int64_t offset = b * seq_len;
-        int64_t valid = valid_lengths ? valid_lengths[b] : seq_len;
-        Attention(q.data() + offset * q_dim, k.data() + offset * kv_dim,
-                  v.data() + offset * kv_dim, attn_out.data() + offset * q_dim,
-                  seq_len, seq_len, config_.n_heads, config_.n_kv_heads,
-                  config_.head_dim, start_pos, valid);
-      }
+    // With a cache, save this call's keys and values and attend over
+    // everything saved so far. Without one, attend over just these words.
+    const float* k_for_attn = k.data();
+    const float* v_for_attn = v.data();
+    int64_t kv_len = seq_len;
+    if (cache != nullptr) {
+      cache->Append(layer_idx, k.data(), v.data(), seq_len);
+      k_for_attn = cache->K(layer_idx);
+      v_for_attn = cache->V(layer_idx);
+      kv_len = cache->length() + seq_len;
     }
+    Attention(q.data(), k_for_attn, v_for_attn, attn_out.data(), seq_len,
+              kv_len, config_.n_heads, config_.n_kv_heads, config_.head_dim,
+              start_pos);
 
-    GemmBT(attn_out.data(), layer.wo.data(), proj.data(), n_rows, q_dim, d);
-    for (int64_t i = 0; i < n_rows * d; ++i) x[i] += proj[i];  // residual add
+    GemmBT(attn_out.data(), layer.wo.data(), proj.data(), seq_len, q_dim, d);
+    for (int64_t i = 0; i < seq_len * d; ++i) x[i] += proj[i];  // residual add
 
-    // "Think about what was just read" step: the feed-forward network.
-    RmsNorm(x.data(), layer.ffn_norm.data(), normed.data(), n_rows, d,
+    // Step 3, feed-forward network: process what attention gathered.
+    RmsNorm(x.data(), layer.ffn_norm.data(), normed.data(), seq_len, d,
             config_.rms_eps);
     SwiGlu(normed.data(), layer.w_gate.data(), layer.w_up.data(),
-           layer.w_down.data(), mlp_out.data(), n_rows, d, config_.ffn_hidden);
-    for (int64_t i = 0; i < n_rows * d; ++i)
-      x[i] += mlp_out[i];  // residual add
+           layer.w_down.data(), mlp_out.data(), seq_len, d, config_.ffn_hidden);
+    for (int64_t i = 0; i < seq_len * d; ++i) x[i] += mlp_out[i];  // residual
     if (layer_outputs != nullptr) layer_outputs->push_back(x);
   }
 
   if (cache != nullptr) cache->Advance(seq_len);
 
-  RmsNorm(x.data(), final_norm.data(), normed.data(), n_rows, d,
+  // Step 4: score every word in the vocabulary for each position.
+  RmsNorm(x.data(), final_norm.data(), normed.data(), seq_len, d,
           config_.rms_eps);
-  GemmBT(normed.data(), lm_head.data(), out_logits, n_rows, d,
+  GemmBT(normed.data(), lm_head.data(), out_logits, seq_len, d,
          config_.vocab_size);
 }
 

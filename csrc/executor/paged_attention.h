@@ -6,13 +6,10 @@
 
 namespace kiln {
 
-// Attention, reading keys and values out of a paged cache instead of one
-// contiguous buffer. Mathematically this must produce exactly the same
-// answer as Attention() (csrc/executor/attention.cpp) given the same
-// underlying numbers -- paging is purely a matter of *where the numbers
-// live in memory*, never a change to the attention math itself. The
-// `Model.PagedAttentionMatchesContiguousAttention`-style test (the
-// "paged vs contiguous parity" requirement) is what proves that.
+// The same attention as Attention() in attention.h, but reading keys and
+// values from a paged cache. Paging only changes where the numbers sit in
+// memory, so the result must be identical. paged_attention_test.cpp checks
+// that.
 void PagedAttention(const float* q, const PagedKVCache& cache, int64_t layer,
                     const std::vector<int64_t>& block_table, float* out,
                     int64_t seq_len, int64_t kv_len, int64_t n_heads,

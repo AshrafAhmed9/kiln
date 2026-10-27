@@ -295,7 +295,7 @@ void CudaModel::ForwardImpl(const int32_t* host_tokens, int64_t seq_len,
     AttentionCuda(impl_->q.data(), k_for_attention, v_for_attention,
                   impl_->attn_out.data(), seq_len, kv_len,
                   impl_->config.n_heads, impl_->config.n_kv_heads,
-                  impl_->config.head_dim, start_pos, -1);
+                  impl_->config.head_dim, start_pos);
     GemmBTWithHandle(impl_->handle, impl_->attn_out.data(), layer.wo.data(),
                      impl_->projection.data(), seq_len, q_dim, d);
     AddCuda(impl_->x.data(), impl_->projection.data(), seq_len * d);

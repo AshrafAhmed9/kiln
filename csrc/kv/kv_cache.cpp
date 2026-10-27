@@ -19,8 +19,7 @@ void KVCache::Append(int64_t layer, const float* new_k, const float* new_v,
   size_t offset = static_cast<size_t>(length_ * row_size);
   size_t count = static_cast<size_t>(n_new * row_size);
   assert(offset + count <= k_[layer].size() &&
-         "KVCache exhausted -- Forward() was called with more tokens than "
-         "max_seq_len allows for");
+         "KVCache is full: more words than max_seq_len allows");
   std::memcpy(k_[layer].data() + offset, new_k, count * sizeof(float));
   std::memcpy(v_[layer].data() + offset, new_v, count * sizeof(float));
 }

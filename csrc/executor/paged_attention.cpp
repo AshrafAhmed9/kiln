@@ -16,20 +16,16 @@ void PagedAttention(const float* q, const PagedKVCache& cache, int64_t layer,
   float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
   int64_t block_size = cache.block_size();
 
-  // The caller has to have handed us enough blocks to actually cover
-  // kv_len positions -- if not, reading past the end of block_table below
-  // would be silent undefined behavior instead of a clear error pointing
-  // at the actual mistake (the caller under-sized the block table).
+  // Make sure the block table covers kv_len words, so we never read past
+  // the end of it.
   int64_t blocks_needed = (kv_len + block_size - 1) / block_size;
   if (static_cast<int64_t>(block_table.size()) < blocks_needed) {
     throw std::invalid_argument(
         "PagedAttention: block_table has fewer blocks than kv_len needs");
   }
 
-  // Translates a logical key position (0, 1, 2, ...) into "which physical
-  // block, which slot within that block" -- this one line is the entire
-  // difference between paged and contiguous attention. Everything else
-  // below is identical to the contiguous version.
+  // Turns "word number j" into "which block, which slot in that block".
+  // This is the only difference from the normal attention code.
   auto locate = [&](int64_t position, int64_t* block_id, int64_t* slot) {
     *block_id = block_table[position / block_size];
     *slot = position % block_size;

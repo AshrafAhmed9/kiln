@@ -1,8 +1,6 @@
-"""The generation loop: the part that repeatedly asks the model "what's the
-next word?", one word at a time, until we have a full answer. This lives in
-Python because it's just a loop calling into C++ -- the actual heavy lifting
-(the forward pass) still happens on the C++ side, through the pybind11
-boundary.
+"""The generation loop: ask the model for the next word, add it to the text,
+and repeat until the answer is long enough. It lives in Python because it is
+just a loop; the heavy math happens inside the C++ model.
 """
 from __future__ import annotations
 
@@ -14,58 +12,48 @@ from kiln_py import _C
 
 
 def generate_stream(model, tokenizer, prompt: str, max_new_tokens: int,
-                     sampler_config, seed: int = 0) -> Iterator[int]:
-    """Reads `prompt`, then yields one new token id at a time (reusing the
-    KV cache so it never has to reread words it's already seen), until it
-    has generated `max_new_tokens` new words. Does not yield any prompt
-    tokens, only newly generated ones.
+                    sampler_config, seed: int = 0) -> Iterator[int]:
+    """Yields the new token ids one at a time (not the prompt's own tokens).
+
+    The first call to the model reads the whole prompt. After that, the KV
+    cache remembers the earlier words, so each step only passes in the one
+    newest word.
     """
     prompt_ids = tokenizer.encode(prompt)
-    config = model.config
-
     all_tokens = list(prompt_ids)
-    tokens_array = np.array(prompt_ids, dtype=np.int32)
-    uses_cuda_cache = hasattr(model, "forward_cached")
-    if uses_cuda_cache:
-        # CudaModel owns device-resident K/V buffers. Keeping that ownership
-        # on the C++ side avoids copying cache rows through Python each token.
-        logits = model.forward_cached(tokens_array, 0)
+    prompt_array = np.array(prompt_ids, dtype=np.int32)
+
+    # The GPU model keeps its own cache inside. The CPU model needs one
+    # passed in.
+    uses_gpu_cache = hasattr(model, "forward_cached")
+    if uses_gpu_cache:
+        logits = model.forward_cached(prompt_array, 0)
     else:
-        # The CPU model's cache is an explicit C++ object because the CPU
-        # binding supports multiple independent sequences.
+        config = model.config
         cache = _C.KVCache(config.n_layers, config.max_seq_len,
                            config.n_kv_heads, config.head_dim)
-        logits = model.forward(tokens_array, 1, len(prompt_ids), None, 0, cache)
+        logits = model.forward(prompt_array, 0, cache)
 
     for step in range(max_new_tokens):
-        last_word_scores = logits[-1]
-        next_token = _C.sample(last_word_scores, sampler_config, all_tokens,
-                                seed + step)
+        # The last row holds the scores for what comes next.
+        next_token = _C.sample(logits[-1], sampler_config, all_tokens, seed + step)
         all_tokens.append(next_token)
         yield next_token
 
-        # Every following step only has to hand the model the ONE new word
-        # -- the cache already remembers everything before it. This is why
-        # a cached loop is so much cheaper than starting over every time.
         one_token = np.array([next_token], dtype=np.int32)
         position = len(all_tokens) - 1
-        if uses_cuda_cache:
+        if uses_gpu_cache:
             logits = model.forward_cached(one_token, position)
         else:
-            logits = model.forward(one_token, 1, 1, None, position, cache)
+            logits = model.forward(one_token, position, cache)
 
 
 def generate(model, tokenizer, prompt: str, max_new_tokens: int,
              sampler_config, seed: int = 0) -> str:
-    """Same as generate_stream, but collects the whole answer and returns it
-    as text instead of yielding token ids one at a time.
-    """
+    """Like generate_stream, but returns the whole answer as one string."""
     new_tokens = list(generate_stream(model, tokenizer, prompt, max_new_tokens,
                                       sampler_config, seed))
-    raw_bytes = tokenizer.decode(new_tokens)
-    # A byte-level tokenizer hands back raw bytes, not guaranteed-valid
-    # text -- especially from an untrained model, which can output any byte
-    # value at all, not just ones that spell out real characters. Any byte
-    # sequence that isn't valid text gets swapped for the standard "�"
-    # placeholder character instead of crashing the whole request.
-    return raw_bytes.decode("utf-8", errors="replace")
+    # The tokenizer works on raw bytes, and a model (especially one with
+    # random weights) can produce bytes that are not valid text. Replace
+    # those with "?" characters instead of crashing the request.
+    return tokenizer.decode(new_tokens).decode("utf-8", errors="replace")

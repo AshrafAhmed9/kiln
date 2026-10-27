@@ -25,36 +25,31 @@ struct LayerWeights {
   std::vector<float> w_down;     // [dim, ffn_hidden]
 };
 
-// The full Llama-architecture model: embedding -> N decoder layers -> final
-// norm -> LM head. This is Kiln's forward pass, KV
-// cache, and padded batching combined into one entry point, since
-// they're one code path with optional arguments rather than three separate
-// ones.
+// The full Llama-style model: word embeddings -> N decoder layers -> final
+// norm -> output layer that scores every word in the vocabulary.
 class Model {
  public:
-  // Deterministic small random weights -- used by every test in this repo,
-  // so tests don't need a checkpoint on disk.
+  // Small random weights from a seed, so tests don't need a real checkpoint.
+  // The same seed always gives the same weights.
   static Model LoadRandom(const ModelConfig& config, uint32_t seed);
 
-  // Loads real weights from a safetensors file using the standard
-  // Llama/HF key naming ("model.layers.{i}.self_attn.q_proj.weight", etc).
-  // Checked against real SmolLM2 checkpoints by tools/hf_parity.py.
+  // Loads real trained weights from a .safetensors file, using the standard
+  // Llama / Hugging Face tensor names. Checked against real SmolLM2
+  // checkpoints by tools/hf_parity.py.
   static Model LoadFromSafetensors(const ModelConfig& config,
                                    const std::string& path);
 
-  // tokens is [batch_size * seq_len], batch-major (item 0's seq_len tokens,
-  // then item 1's, ...). valid_lengths (may be null => everything valid) is
-  // per-item real length, for padded batches. start_pos is the
-  // absolute position of each item's first token -- same value for every
-  // item in this call (multi-item KV-cached decode at different start
-  // positions per item is scheduler territory, not this
-  // function's job). cache is only meaningful when batch_size == 1
-  // (the contiguous single-sequence cache).
-  // out_logits, sized [batch_size * seq_len, vocab_size], is filled for
-  // every row including padding -- the caller decides which rows matter.
-  void Forward(const int32_t* tokens, int64_t batch_size, int64_t seq_len,
-               const int64_t* valid_lengths, int64_t start_pos, KVCache* cache,
-               float* out_logits,
+  // Runs the model on `seq_len` words (token ids) and writes one row of
+  // scores per word into out_logits, shape [seq_len, vocab_size]. The last
+  // row says how likely each possible next word is.
+  //
+  // start_pos is where these words sit in the whole text: 0 for a fresh
+  // prompt, or the number of words already cached when adding one more.
+  // cache is optional. With a cache, the keys and values of these words are
+  // saved for later calls; without one, everything is recomputed each time.
+  // layer_outputs is optional and collects each layer's output for testing.
+  void Forward(const int32_t* tokens, int64_t seq_len, int64_t start_pos,
+               KVCache* cache, float* out_logits,
                std::vector<std::vector<float>>* layer_outputs = nullptr) const;
 
   const ModelConfig& config() const { return config_; }

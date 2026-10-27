@@ -1,7 +1,6 @@
-"""Perplexity: a standard way of scoring how well a model predicts real
-text, lower being better. Loosely, it's "on average, how surprised was the
-model by each actual next word?" -- turned into a single number so
-different models or versions can be compared.
+"""Perplexity: a standard score for how well a model predicts real text.
+Lower is better. Roughly, it is "how surprised was the model by each real
+next word, on average".
 """
 from __future__ import annotations
 
@@ -11,36 +10,30 @@ import numpy as np
 
 
 def _log_softmax(logits: np.ndarray) -> np.ndarray:
-    shifted = logits - np.max(logits)
-    log_sum_exp = np.log(np.sum(np.exp(shifted)))
-    return shifted - log_sum_exp
+    """Turns raw scores into log-probabilities."""
+    shifted = logits - np.max(logits)  # subtract the max so exp() cannot overflow
+    return shifted - np.log(np.sum(np.exp(shifted)))
 
 
 def perplexity_from_logits(all_logits: np.ndarray, token_ids: list[int]) -> float:
-    """all_logits is [seq_len, vocab_size] -- row i is the model's
-    prediction for what comes right after token_ids[i]. This scores how
-    well those predictions matched what actually came next (token_ids[i+1])
-    for every position but the last, since there's nothing "next" to check
-    the last position's prediction against.
+    """all_logits is [seq_len, vocab_size]: row i is the model's prediction
+    for the word after token_ids[i]. Each prediction is checked against the
+    word that really came next. The last row is skipped, since nothing
+    follows it.
 
-    The core idea: for each real next word, look up how much probability
-    the model's own prediction assigned to that specific word. A model
-    that's confidently right assigns that word a probability close to 1
-    (a small "surprise," measured as -log(probability)); a model that's
-    confidently wrong assigns it a probability close to 0 (a huge
-    surprise). Averaging that surprise across every position, then
-    undoing the logarithm at the very end (exponentiating), turns the
-    average surprise into perplexity.
+    For each position: how much probability did the model give the real next
+    word? A model that was sure and right gives it close to 1 (little
+    surprise). A model that was sure and wrong gives it close to 0 (huge
+    surprise). Average the surprise (-log probability) over all positions,
+    then undo the log with exp().
     """
     num_predictions = len(token_ids) - 1
     if num_predictions <= 0:
         raise ValueError("perplexity needs at least 2 tokens to score anything")
 
-    total_negative_log_likelihood = 0.0
+    total_surprise = 0.0
     for i in range(num_predictions):
         log_probs = _log_softmax(all_logits[i])
-        actual_next_token = token_ids[i + 1]
-        total_negative_log_likelihood += -log_probs[actual_next_token]
+        total_surprise += -log_probs[token_ids[i + 1]]
 
-    average_negative_log_likelihood = total_negative_log_likelihood / num_predictions
-    return math.exp(average_negative_log_likelihood)
+    return math.exp(total_surprise / num_predictions)

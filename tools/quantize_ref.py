@@ -1,9 +1,6 @@
-"""A plain Python re-implementation of the INT8 per-channel quantizer in
-csrc/quant/quantize.cpp, kept intentionally separate from the C++ code
-(not calling into it at all) so it can be used as an independent
-cross-check -- the same "don't just trust your own implementation, compare
-it against something written independently" idea the parity harness
-applies to the model's numerics, applied here to the quantizer itself.
+"""A separate Python version of the INT8 quantizer in csrc/quant/quantize.cpp.
+It does not call the C++ code, so the tests can check the C++ quantizer
+against an independent implementation.
 """
 from __future__ import annotations
 
@@ -11,10 +8,8 @@ import numpy as np
 
 
 def quantize_int8_per_channel(weights: np.ndarray):
-    """weights is [rows, cols]. Returns (quantized_int8, scales) exactly
-    the way csrc/quant/quantize.cpp's QuantizeInt8PerChannel does: one
-    scale per row, chosen so the row's single largest weight maps to the
-    largest representable integer step (127).
+    """weights is [rows, cols]. Returns (int8 values, one scale per row).
+    Each row's scale is picked so its largest weight becomes 127.
     """
     rows, cols = weights.shape
     max_abs = np.max(np.abs(weights), axis=1)

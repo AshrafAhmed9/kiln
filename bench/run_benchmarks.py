@@ -55,7 +55,7 @@ def bench_naive_vs_kv_cache(num_new_tokens: int = 20) -> dict:
     start = time.perf_counter()
     for _ in range(num_new_tokens):
         tokens = np.array(context, dtype=np.int32)
-        logits = model.forward(tokens, 1, len(context), None, 0, None)
+        logits = model.forward(tokens)
         context.append(int(np.argmax(logits[-1])))
     naive_seconds = time.perf_counter() - start
 
@@ -64,11 +64,11 @@ def bench_naive_vs_kv_cache(num_new_tokens: int = 20) -> dict:
                         config.head_dim)
     tokens = np.array(prompt, dtype=np.int32)
     start = time.perf_counter()
-    logits = model.forward(tokens, 1, len(prompt), None, 0, cache)
+    logits = model.forward(tokens, 0, cache)
     for i in range(num_new_tokens):
         next_token = int(np.argmax(logits[-1]))
         one = np.array([next_token], dtype=np.int32)
-        logits = model.forward(one, 1, 1, None, len(prompt) + i, cache)
+        logits = model.forward(one, len(prompt) + i, cache)
     cached_seconds = time.perf_counter() - start
 
     return {
@@ -124,8 +124,7 @@ def _generate_with_timing(model, config, prompt: list[int], num_new_tokens: int,
     context = list(prompt)
 
     start = time.perf_counter()
-    logits = model.forward(np.array(context, dtype=np.int32), 1, len(context),
-                           None, 0, cache)
+    logits = model.forward(np.array(context, dtype=np.int32), 0, cache)
     next_token = int(np.argmax(logits[-1]))
     ttft = time.perf_counter() - start
 
@@ -134,11 +133,10 @@ def _generate_with_timing(model, config, prompt: list[int], num_new_tokens: int,
         context.append(next_token)
         start = time.perf_counter()
         if use_cache:
-            logits = model.forward(np.array([next_token], dtype=np.int32), 1, 1,
-                                   None, len(context) - 1, cache)
+            logits = model.forward(np.array([next_token], dtype=np.int32),
+                                   len(context) - 1, cache)
         else:
-            logits = model.forward(np.array(context, dtype=np.int32), 1,
-                                   len(context), None, 0, None)
+            logits = model.forward(np.array(context, dtype=np.int32))
         next_token = int(np.argmax(logits[-1]))
         gaps.append(time.perf_counter() - start)
     return ttft, gaps

@@ -63,7 +63,7 @@ TEST(MergeLoraAdapter, ChangesModelOutputThroughARealForwardPass) {
   Model model = Model::LoadRandom(config, /*seed=*/11);
   int32_t tokens[3] = {1, 2, 3};
   std::vector<float> logits_before(3 * config.vocab_size);
-  model.Forward(tokens, 1, 3, nullptr, 0, nullptr, logits_before.data());
+  model.Forward(tokens, 3, 0, nullptr, logits_before.data());
 
   int64_t q_dim = config.n_heads * config.head_dim;  // 8
   int64_t rank = 2;
@@ -74,7 +74,7 @@ TEST(MergeLoraAdapter, ChangesModelOutputThroughARealForwardPass) {
                            rank, /*scale=*/2.0f);
 
   std::vector<float> logits_after(3 * config.vocab_size);
-  model.Forward(tokens, 1, 3, nullptr, 0, nullptr, logits_after.data());
+  model.Forward(tokens, 3, 0, nullptr, logits_after.data());
 
   bool any_different = false;
   for (size_t i = 0; i < logits_before.size(); ++i) {

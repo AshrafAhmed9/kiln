@@ -24,30 +24,13 @@ ModelConfig TinyConfig() {
   return config;
 }
 
-// A cache only makes sense for one sentence at a time in this project's
-// current design -- passing both a cache and more than one sentence at
-// once must fail loudly rather than silently ignore the cache the caller
-// asked for (see the comment at the top of Model::Forward).
-TEST(Model, PassingACacheWithMoreThanOneSequenceThrows) {
-  ModelConfig config = TinyConfig();
-  Model model = Model::LoadRandom(config, /*seed=*/4);
-  KVCache cache(config.n_layers, config.max_seq_len, config.n_kv_heads,
-                config.head_dim);
-  int32_t tokens[4] = {1, 2, 3, 4};
-  std::vector<float> logits(4 * config.vocab_size);
-
-  EXPECT_THROW(model.Forward(tokens, /*batch_size=*/2, /*seq_len=*/2, nullptr,
-                             0, &cache, logits.data()),
-               std::invalid_argument);
-}
-
 TEST(Model, ProducesLogitsOfTheRightShape) {
   Model model = Model::LoadRandom(TinyConfig(), /*seed=*/1);
   int32_t tokens[3] = {1, 2, 3};
   std::vector<float> logits(3 * model.config().vocab_size);
 
-  model.Forward(tokens, /*batch_size=*/1, /*seq_len=*/3, nullptr,
-                /*start_pos=*/0, /*cache=*/nullptr, logits.data());
+  model.Forward(tokens, /*seq_len=*/3, /*start_pos=*/0, /*cache=*/nullptr,
+                logits.data());
 
   // Just checking the numbers came out finite and the right count exist --
   // this is the "did anything crash or produce garbage" sanity check that
@@ -76,18 +59,16 @@ TEST(Model, CachedDecodeMatchesFullRecompute) {
   KVCache cache(config.n_layers, config.max_seq_len, config.n_kv_heads,
                 config.head_dim);
   std::vector<float> prompt_logits(3 * config.vocab_size);
-  model.Forward(full_sequence.data(), 1, 3, nullptr, 0, &cache,
-                prompt_logits.data());
+  model.Forward(full_sequence.data(), 3, 0, &cache, prompt_logits.data());
 
   int32_t next_token = full_sequence[3];
   std::vector<float> cached_next_logits(1 * config.vocab_size);
-  model.Forward(&next_token, 1, 1, nullptr, /*start_pos=*/3, &cache,
+  model.Forward(&next_token, 1, /*start_pos=*/3, &cache,
                 cached_next_logits.data());
 
   // Path B: process all 4 tokens at once, with no cache at all.
   std::vector<float> full_logits(4 * config.vocab_size);
-  model.Forward(full_sequence.data(), 1, 4, nullptr, 0, nullptr,
-                full_logits.data());
+  model.Forward(full_sequence.data(), 4, 0, nullptr, full_logits.data());
 
   // The cached path's answer for the 4th token should match the
   // no-cache path's answer for that same 4th token, exactly.

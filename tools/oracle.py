@@ -1,7 +1,6 @@
-"""The parity oracle: dumps tokenizer output, per-layer activations, and
-final logits from the reference HuggingFace model so the C++ engine has
-something ground-truth to diff against. Test/tooling only -- the engine
-itself never imports this or links Python (the engine has no Python dependency).
+"""Saves the Hugging Face model's answers for one prompt (token ids, each
+layer's output, final scores) to a file, as ground truth to compare Kiln
+against. Tooling only; the engine never uses it.
 """
 import argparse
 import json

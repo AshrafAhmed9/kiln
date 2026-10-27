@@ -1,9 +1,9 @@
-"""Train a small, reproducible LoRA adapter outside Kiln's serving path.
+"""Trains a small LoRA adapter with PyTorch/PEFT.
 
-This is deliberately tooling: PyTorch/PEFT create an adapter, while Kiln
-continues to serve through its C++ merge primitive. The JSONL file must have a
-``text`` field and should be replaced with a licensed task dataset for any
-quality claim.
+LoRA fine-tunes a model by learning two small matrices per layer instead of
+changing all the weights. Kiln then merges the result with
+tools/merge_lora_adapter.py. The data file is JSONL with a "text" field per
+line (tools/fixtures/lora_tiny.jsonl is a tiny example).
 """
 from __future__ import annotations
 

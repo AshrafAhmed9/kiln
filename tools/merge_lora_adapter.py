@@ -1,4 +1,8 @@
-"""Load a PEFT q_proj adapter into a live Kiln model through the C++ merge API."""
+"""Merges a LoRA adapter (trained by tools/train_lora.py) into a Kiln model.
+
+LoRA fine-tuning learns two small matrices per layer. Merging adds their
+product into the original q_proj weights once, so serving costs nothing extra.
+"""
 from __future__ import annotations
 
 import argparse
@@ -9,7 +13,7 @@ import numpy as np
 from safetensors.numpy import load_file
 
 from kiln_py import _C
-from tools.hf_parity import config_from_hf
+from kiln_py.api.real_checkpoint import config_from_hf
 
 
 def merge(model_dir: Path, adapter_dir: Path, model: _C.Model | None = None) -> _C.Model:
@@ -40,8 +44,8 @@ if __name__ == "__main__":
     base = _C.Model.load_from_safetensors(
         config_from_hf(args.model_dir / "config.json"), str(args.model_dir / "model.safetensors")
     )
-    before = base.forward(tokens, 1, len(tokens), None, 0, None)[-1]
+    before = base.forward(tokens)[-1]
     model = merge(args.model_dir, args.adapter_dir, base)
-    logits = model.forward(tokens, 1, len(tokens), None, 0, None)[-1]
+    logits = model.forward(tokens)[-1]
     print(json.dumps({"vocab_size": len(logits), "top_token": int(logits.argmax()),
                       "max_logit_change": float(np.abs(logits - before).max())}))

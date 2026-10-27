@@ -16,10 +16,8 @@ PagedKVCache::PagedKVCache(int64_t n_layers, int64_t num_blocks,
   free_blocks_.reserve(num_blocks);
   for (int64_t i = num_blocks - 1; i >= 0; --i) free_blocks_.push_back(i);
 
-  size_t floats_per_block =
-      static_cast<size_t>(block_size * n_kv_heads * head_dim);
-  k_.assign(n_layers, std::vector<float>(num_blocks * floats_per_block));
-  v_.assign(n_layers, std::vector<float>(num_blocks * floats_per_block));
+  k_.assign(n_layers, std::vector<float>(num_blocks * FloatsPerBlock()));
+  v_.assign(n_layers, std::vector<float>(num_blocks * FloatsPerBlock()));
 }
 
 int64_t PagedKVCache::AllocateBlock() {
@@ -33,50 +31,35 @@ int64_t PagedKVCache::AllocateBlock() {
 void PagedKVCache::IncRef(int64_t block_id) { ++ref_counts_[block_id]; }
 
 void PagedKVCache::DecRef(int64_t block_id) {
-  // This mirrors a mistake already made and fixed once in this project
-  // (Arena::Allocate): a debug-only
-  // assert here would mean debug builds crash loudly on a double-free
-  // while release builds silently let the reference count go negative
-  // and never give the block back to the free pool. One rule, in every
-  // build: a double-free is a real caller bug, so it's reported the same
-  // way every time, not just when assertions happen to be compiled in.
+  // Freeing a block nobody owns is a bug in the caller. Throw in every
+  // build, instead of using assert(), which release builds skip. Skipping it
+  // would let the count go negative and lose the block.
   if (ref_counts_[block_id] <= 0) {
     throw std::runtime_error(
-        "PagedKVCache::DecRef called on a block nobody currently owns -- "
-        "this would double-free a block");
+        "PagedKVCache::DecRef: block is not owned by anyone (double free)");
   }
   --ref_counts_[block_id];
   if (ref_counts_[block_id] == 0) free_blocks_.push_back(block_id);
 }
 
 float* PagedKVCache::K(int64_t layer, int64_t block_id) {
-  size_t floats_per_block =
-      static_cast<size_t>(block_size_ * n_kv_heads_ * head_dim_);
-  return k_[layer].data() + block_id * floats_per_block;
+  return k_[layer].data() + block_id * FloatsPerBlock();
 }
 
 float* PagedKVCache::V(int64_t layer, int64_t block_id) {
-  size_t floats_per_block =
-      static_cast<size_t>(block_size_ * n_kv_heads_ * head_dim_);
-  return v_[layer].data() + block_id * floats_per_block;
+  return v_[layer].data() + block_id * FloatsPerBlock();
 }
 
 const float* PagedKVCache::K(int64_t layer, int64_t block_id) const {
-  size_t floats_per_block =
-      static_cast<size_t>(block_size_ * n_kv_heads_ * head_dim_);
-  return k_[layer].data() + block_id * floats_per_block;
+  return k_[layer].data() + block_id * FloatsPerBlock();
 }
 
 const float* PagedKVCache::V(int64_t layer, int64_t block_id) const {
-  size_t floats_per_block =
-      static_cast<size_t>(block_size_ * n_kv_heads_ * head_dim_);
-  return v_[layer].data() + block_id * floats_per_block;
+  return v_[layer].data() + block_id * FloatsPerBlock();
 }
 
 void PagedKVCache::CopyBlockContents(int64_t from_block, int64_t to_block) {
-  size_t bytes_per_block =
-      static_cast<size_t>(block_size_ * n_kv_heads_ * head_dim_) *
-      sizeof(float);
+  size_t bytes_per_block = FloatsPerBlock() * sizeof(float);
   for (int64_t layer = 0; layer < n_layers_; ++layer) {
     std::memcpy(K(layer, to_block), K(layer, from_block), bytes_per_block);
     std::memcpy(V(layer, to_block), V(layer, from_block), bytes_per_block);
@@ -106,9 +89,7 @@ std::pair<int64_t, int64_t> PagedSequence::PrepareWriteSlot() {
   if (needs_new_block) {
     int64_t new_block = cache_->AllocateBlock();
     if (new_block < 0) {
-      throw std::runtime_error(
-          "PagedKVCache: out of physical blocks -- the caller must not "
-          "have admitted more sequences than the cache has room for");
+      throw std::runtime_error("PagedKVCache: out of blocks");
     }
     block_table_.push_back(new_block);
     return {new_block, 0};
@@ -116,14 +97,13 @@ std::pair<int64_t, int64_t> PagedSequence::PrepareWriteSlot() {
 
   int64_t current_block = block_table_.back();
   if (cache_->RefCount(current_block) > 1) {
-    // Someone else still shares this block -- copying it now, before
-    // writing, is the entire copy-on-write mechanism: this sequence gets
-    // its own private copy, the other sequence keeps using the original
-    // untouched, and no data either of them already wrote is disturbed.
+    // Another text shares this block. Copy it before writing: this text
+    // gets a private copy, and the other keeps the original untouched.
+    // That is copy-on-write.
     int64_t private_block = cache_->AllocateBlock();
     if (private_block < 0) {
       throw std::runtime_error(
-          "PagedKVCache: out of physical blocks during copy-on-write");
+          "PagedKVCache: out of blocks during copy-on-write");
     }
     cache_->CopyBlockContents(current_block, private_block);
     cache_->DecRef(current_block);

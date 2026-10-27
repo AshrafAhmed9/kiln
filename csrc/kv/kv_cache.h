@@ -4,23 +4,24 @@
 
 namespace kiln {
 
-// Contiguous, single-sequence KV cache (simple version; paged upgrades
-// this to a block/paged allocator for multiple concurrent sequences --
-// contiguous is the simplest starting point, and paging generalizes it).
+// The KV cache for one text. While generating, every layer needs the keys
+// (K) and values (V) of all earlier words. Saving them here means each new
+// word only has to compute its own, instead of redoing the whole text.
 //
-// One buffer per layer, sized for the whole max sequence up front (arena
-// discipline: no per-token reallocation). `length()` is
-// how many positions are already filled; every layer shares the same
-// length, since one Model::Forward call advances every layer by the same
-// number of new tokens.
+// Each layer gets one buffer, sized up front for the longest allowed text,
+// so nothing is reallocated while generating. length() is how many words
+// are stored so far; all layers share it, because each Forward call adds
+// the same number of words to every layer.
+//
+// See PagedKVCache for a version that splits memory into blocks.
 class KVCache {
  public:
   KVCache(int64_t n_layers, int64_t max_seq_len, int64_t n_kv_heads,
           int64_t head_dim);
 
-  // Writes `n_new` new K/V rows for `layer` starting at the current
-  // length -- call once per layer, per Forward() call, in layer order.
-  // Does not advance length(); call Advance() once after all layers.
+  // Stores the keys and values of `n_new` new words for one layer. Call
+  // once per layer per Forward call. It does not change length(); call
+  // Advance() once after every layer has been appended.
   void Append(int64_t layer, const float* new_k, const float* new_v,
               int64_t n_new);
   void Advance(int64_t n_new) { length_ += n_new; }
@@ -33,8 +34,8 @@ class KVCache {
   int64_t n_kv_heads_;
   int64_t head_dim_;
   int64_t length_ = 0;
-  std::vector<std::vector<float>>
-      k_;  // k_[layer] is [max_seq_len, n_kv_heads*head_dim]
+  // k_[layer] is [max_seq_len, n_kv_heads * head_dim]
+  std::vector<std::vector<float>> k_;
   std::vector<std::vector<float>> v_;
 };
 

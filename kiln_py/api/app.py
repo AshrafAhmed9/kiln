@@ -1,9 +1,8 @@
-"""The OpenAI-compatible HTTP API. This is the "front door" of Kiln: it
-speaks the same request/response shape as OpenAI's API, so existing tools
-built for OpenAI (like the `openai` Python package) can talk to Kiln without
-changes. This file only handles requests coming in and answers going out --
-it doesn't do any of the actual math itself; it calls into
-kiln_py.runtime.generate, which calls into the real C++ model.
+"""The web API: the front door of Kiln. It accepts requests in the same
+format as OpenAI's /v1/completions, so tools built for OpenAI (like the
+`openai` Python package) work unchanged. This file only takes requests in and
+sends answers out; the generating happens in kiln_py.runtime.generate, which
+calls the C++ model.
 
 Two backends, picked at startup by environment variable. Both serve one
 request at a time:
@@ -31,7 +30,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from kiln_py import _C
-from kiln_py.api.real_checkpoint import RealCheckpointService, load_real_model_and_tokenizer
+from kiln_py.api.real_checkpoint import CompletionService, load_real_model_and_tokenizer
 from kiln_py.runtime.byte_tokenizer import write_byte_level_tokenizer_json
 
 app = FastAPI(title="Kiln", description="An LLM inference engine, built from scratch.")
@@ -70,7 +69,7 @@ if _CHECKPOINT_DIR:
 else:
     _MODEL_NAME = "kiln-toy"
     _model, _tokenizer = _build_toy_model_and_tokenizer()
-_service = RealCheckpointService(_model, _tokenizer)
+_service = CompletionService(_model, _tokenizer)
 
 
 class CompletionRequest(BaseModel):

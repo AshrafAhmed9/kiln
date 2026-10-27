@@ -1,10 +1,9 @@
-"""Loads a real trained checkpoint and serves it on the real forward pass,
-CPU or CUDA depending on what's asked for. This is the non-toy path: no
-random weights, no byte-level placeholder tokenizer.
+"""Loads a model checkpoint from disk and turns a model into a simple
+"complete this prompt" service.
 
-CudaModel owns exactly one device-resident KV cache (see
-csrc/executor/cuda_model.cu), unlike the CPU Model's per-request KVCache
-objects. So this path serves one request at a time behind a lock.
+The service handles one request at a time: the GPU model owns a single KV
+cache (see csrc/executor/cuda_model.cu), so two requests can't share it.
+A lock makes later requests wait their turn.
 """
 from __future__ import annotations
 
@@ -18,9 +17,7 @@ from kiln_py.runtime.generate import generate, generate_stream
 
 
 def config_from_hf(config_path: Path) -> "_C.ModelConfig":
-    """Same field mapping tools/hf_parity.py uses to build a ModelConfig
-    from a Hugging Face Llama-family config.json.
-    """
+    """Reads a Hugging Face Llama-style config.json into a Kiln ModelConfig."""
     raw = json.loads(config_path.read_text())
     if raw.get("model_type") != "llama":
         raise ValueError(f"expected a Llama-family checkpoint, got {raw.get('model_type')!r}")
@@ -39,8 +36,9 @@ def config_from_hf(config_path: Path) -> "_C.ModelConfig":
 
 
 def load_real_model_and_tokenizer(checkpoint_dir: Path, device: str):
-    """device is "cpu" or "cuda". Raises if "cuda" is requested but this
-    build has no CUDA support, rather than silently falling back to CPU.
+    """Loads the weights and tokenizer from a checkpoint folder. `device` is
+    "cpu" or "cuda". Asking for "cuda" on a build without CUDA is an error,
+    not a silent fall back to CPU.
     """
     config = config_from_hf(checkpoint_dir / "config.json")
     cpu_model = _C.Model.load_from_safetensors(
@@ -57,9 +55,9 @@ def load_real_model_and_tokenizer(checkpoint_dir: Path, device: str):
     return cpu_model, tokenizer
 
 
-class RealCheckpointService:
-    """Same .complete()/.stream() shape as CompletionBatchService, so
-    kiln_py/api/app.py doesn't need to know which backend is live.
+class CompletionService:
+    """Wraps a model and tokenizer with two calls: complete() returns the
+    whole answer, stream() yields it one token at a time.
     """
 
     def __init__(self, model, tokenizer):
@@ -68,6 +66,7 @@ class RealCheckpointService:
         self._lock = threading.Lock()
 
     def _reset(self) -> None:
+        # The GPU model keeps its cache inside; start each request with an empty one.
         if hasattr(self._model, "reset_cache"):
             self._model.reset_cache()
 

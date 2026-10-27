@@ -270,7 +270,7 @@ TEST(CudaAttention, MatchesCpuReference) {
   device_v.CopyFrom(v);
   AttentionCuda(device_q.data(), device_k.data(), device_v.data(),
                 device_output.data(), kSeqLen, kKvLen, kHeads, kKvHeads,
-                kHeadDim, /*query_start_pos=*/1, /*valid_kv_len=*/-1);
+                kHeadDim, /*query_start_pos=*/1);
   SyncKernel("AttentionCuda");
   std::vector<float> actual = device_output.CopyToHost();
   for (size_t i = 0; i < actual.size(); ++i) EXPECT_NEAR(actual[i], expected[i], 1e-5f);
@@ -280,8 +280,8 @@ TEST(CudaModel, FullPrefillMatchesCpuReference) {
   Model model = Model::LoadRandom(TinyCudaModelConfig(), /*seed=*/29);
   const std::vector<int32_t> tokens = {1, 2, 3};
   std::vector<float> expected(tokens.size() * model.config().vocab_size);
-  model.Forward(tokens.data(), /*batch_size=*/1, tokens.size(), nullptr,
-                /*start_pos=*/0, nullptr, expected.data());
+  model.Forward(tokens.data(), tokens.size(), /*start_pos=*/0, nullptr,
+                expected.data());
 
   CudaModel cuda_model(model);
   std::vector<float> actual(expected.size());
@@ -300,10 +300,10 @@ TEST(CudaModel, CachedDecodeMatchesCpuReference) {
                     model.config().n_kv_heads, model.config().head_dim);
   std::vector<float> cpu_prompt(prompt.size() * model.config().vocab_size);
   std::vector<float> expected(model.config().vocab_size);
-  model.Forward(prompt.data(), /*batch_size=*/1, prompt.size(), nullptr,
-                /*start_pos=*/0, &cpu_cache, cpu_prompt.data());
-  model.Forward(&next_token, /*batch_size=*/1, /*seq_len=*/1, nullptr,
-                /*start_pos=*/prompt.size(), &cpu_cache, expected.data());
+  model.Forward(prompt.data(), prompt.size(), /*start_pos=*/0, &cpu_cache,
+                cpu_prompt.data());
+  model.Forward(&next_token, /*seq_len=*/1, /*start_pos=*/prompt.size(),
+                &cpu_cache, expected.data());
 
   CudaModel cuda_model(model);
   std::vector<float> gpu_prompt(cpu_prompt.size());

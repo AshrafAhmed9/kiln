@@ -41,21 +41,13 @@ using ContiguousInt32Array =
     py::array_t<int32_t, py::array::c_style | py::array::forcecast>;
 
 py::array_t<float> ModelForward(const Model& model, ContiguousInt32Array tokens,
-                                int64_t batch_size, int64_t seq_len,
-                                py::object valid_lengths, int64_t start_pos,
-                                KVCache* cache) {
-  auto tokens_buf = tokens.request();
-  const int64_t* valid_ptr = nullptr;
-  std::vector<int64_t> valid_storage;
-  if (!valid_lengths.is_none()) {
-    valid_storage = valid_lengths.cast<std::vector<int64_t>>();
-    valid_ptr = valid_storage.data();
-  }
-
-  py::array_t<float> out({batch_size * seq_len, model.config().vocab_size});
-  model.Forward(static_cast<const int32_t*>(tokens_buf.ptr), batch_size,
-                seq_len, valid_ptr, start_pos, cache,
-                static_cast<float*>(out.request().ptr));
+                                int64_t start_pos, KVCache* cache) {
+  auto input = tokens.request();
+  if (input.ndim != 1) throw std::invalid_argument("tokens must be 1D");
+  int64_t seq_len = input.shape[0];
+  py::array_t<float> out({seq_len, model.config().vocab_size});
+  model.Forward(static_cast<const int32_t*>(input.ptr), seq_len, start_pos,
+                cache, static_cast<float*>(out.request().ptr));
   return out;
 }
 
@@ -65,8 +57,8 @@ py::list ModelForwardHiddenStates(const Model& model,
   if (input.ndim != 1) throw std::invalid_argument("tokens must be 1D");
   std::vector<std::vector<float>> states;
   std::vector<float> logits(input.shape[0] * model.config().vocab_size);
-  model.Forward(static_cast<const int32_t*>(input.ptr), 1, input.shape[0],
-                nullptr, 0, nullptr, logits.data(), &states);
+  model.Forward(static_cast<const int32_t*>(input.ptr), input.shape[0], 0,
+                nullptr, logits.data(), &states);
   py::list out;
   for (const auto& state : states) {
     py::array_t<float> array(
@@ -178,9 +170,7 @@ PYBIND11_MODULE(_C, m) {
       .def_static("load_random", &kiln::Model::LoadRandom)
       .def_static("load_from_safetensors", &kiln::Model::LoadFromSafetensors)
       .def("forward", &kiln::ModelForward, py::arg("tokens"),
-           py::arg("batch_size"), py::arg("seq_len"),
-           py::arg("valid_lengths") = py::none(), py::arg("start_pos") = 0,
-           py::arg("cache") = nullptr)
+           py::arg("start_pos") = 0, py::arg("cache") = nullptr)
       .def("forward_hidden_states", &kiln::ModelForwardHiddenStates,
            py::arg("tokens"))
       .def("merge_lora_into_layer", &kiln::ModelMergeLoraIntoLayer,

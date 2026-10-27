@@ -17,13 +17,13 @@ def test_python_can_merge_a_lora_adapter_into_the_real_model():
     config.rope_theta = 10000.0
     model = _C.Model.load_random(config, 3)
     tokens = np.asarray([1, 2], dtype=np.int32)
-    before = model.forward(tokens, 1, 2, None, 0, None)
+    before = model.forward(tokens)
 
     model.merge_lora_into_layer(
         0, "wq", np.ones((1, 8), dtype=np.float32),
         np.ones((8, 1), dtype=np.float32), 0.1,
     )
-    after = model.forward(tokens, 1, 2, None, 0, None)
+    after = model.forward(tokens)
     assert not np.allclose(before, after)
 
 

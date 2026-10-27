@@ -14,16 +14,14 @@ namespace kiln {
 __global__ void AttentionKernel(const float* q, const float* k,
                                  const float* v, float* out, int64_t kv_len,
                                  int64_t n_heads, int64_t n_kv_heads,
-                                 int64_t head_dim, int64_t query_start_pos,
-                                 int64_t valid_kv_len) {
+                                 int64_t head_dim, int64_t query_start_pos) {
   int64_t query_row = blockIdx.x;
   int64_t head = blockIdx.y;
   int64_t group_size = n_heads / n_kv_heads;
   int64_t kv_head = head / group_size;
 
   int64_t query_pos = query_start_pos + query_row;
-  int64_t max_valid_kv = (valid_kv_len >= 0) ? valid_kv_len : kv_len;
-  int64_t last_visible = min(query_pos, max_valid_kv - 1);
+  int64_t last_visible = query_pos;  // can see itself and earlier words only
 
   const float* q_row = q + query_row * n_heads * head_dim + head * head_dim;
   float scale = rsqrtf(static_cast<float>(head_dim));
@@ -83,13 +81,12 @@ __global__ void AttentionKernel(const float* q, const float* k,
 void AttentionCuda(const float* q, const float* k, const float* v,
                     float* out, int64_t seq_len, int64_t kv_len,
                     int64_t n_heads, int64_t n_kv_heads, int64_t head_dim,
-                    int64_t query_start_pos, int64_t valid_kv_len) {
+                    int64_t query_start_pos) {
   dim3 grid(seq_len, n_heads);
   int threads_per_block = 128;
   size_t shared_bytes = kv_len * sizeof(float);
   AttentionKernel<<<grid, threads_per_block, shared_bytes>>>(
-      q, k, v, out, kv_len, n_heads, n_kv_heads, head_dim, query_start_pos,
-      valid_kv_len);
+      q, k, v, out, kv_len, n_heads, n_kv_heads, head_dim, query_start_pos);
 }
 
 }  // namespace kiln

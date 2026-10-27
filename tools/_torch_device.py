@@ -1,10 +1,8 @@
-"""Picks a real, usable torch device for the LoRA training/eval tools.
+"""Picks a torch device that really works: CUDA, then Apple MPS, then CPU.
 
-Backend availability alone does not guarantee that an installed PyTorch
-build can execute kernels on that backend. This was found on a Kaggle P100:
-`torch.cuda.is_available()` was true although the build had dropped its
-compute capability. Probe CUDA first, then Apple MPS, with one small real
-operation before selecting either backend.
+`torch.cuda.is_available()` can say True on a GPU that this PyTorch build
+cannot actually run on (this happened on a Kaggle P100), so each device is
+tried with one tiny operation before it is chosen.
 """
 from __future__ import annotations
 

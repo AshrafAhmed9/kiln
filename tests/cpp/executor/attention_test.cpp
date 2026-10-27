@@ -46,26 +46,5 @@ TEST(Attention, EarlierTokenIsUnaffectedByLaterToken) {
   EXPECT_NEAR(out_first[1], out_second[1], 1e-4f);
 }
 
-// valid_kv_len lets a padded, unused position be ignored entirely, as if
-// it weren't there. So attending with 2 real keys plus 1 ignored padding
-// key should give exactly the same answer as attending with just the 2
-// real keys and no padding at all.
-TEST(Attention, PaddingBeyondValidLengthIsIgnored) {
-  float q[2] = {1.0f, 0.0f};
-  float k_two_real[4] = {1.0f, 0.0f, 1.0f, 0.0f};
-  float v_two_real[4] = {2.0f, 2.0f, 4.0f, 4.0f};
-  float out_no_padding[2];
-  Attention(q, k_two_real, v_two_real, out_no_padding, 1, 2, 1, 1, 2, 5);
-
-  float k_with_padding[6] = {1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f};
-  float v_with_padding[6] = {2.0f, 2.0f, 4.0f, 4.0f, 999.0f, 999.0f};
-  float out_with_padding[2];
-  Attention(q, k_with_padding, v_with_padding, out_with_padding, 1, 3, 1, 1, 2,
-            5, /*valid_kv_len=*/2);
-
-  EXPECT_NEAR(out_no_padding[0], out_with_padding[0], 1e-4f);
-  EXPECT_NEAR(out_no_padding[1], out_with_padding[1], 1e-4f);
-}
-
 }  // namespace
 }  // namespace kiln

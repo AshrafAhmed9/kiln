@@ -7,7 +7,7 @@
 namespace kiln {
 
 // Byte-level BPE, loaded from a HuggingFace tokenizer.json (vocab + an
-// ordered merge list). See docs/learning/phase-01.md for why merges are
+// ordered merge list). Merges are
 // applied in rank order, not sequence order, and why the byte-level
 // remapping makes the tokenizer total over all possible byte strings.
 class BpeTokenizer {

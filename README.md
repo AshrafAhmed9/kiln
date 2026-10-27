@@ -9,6 +9,31 @@ It's a learning project, not a production system. The goal was to build each
 layer of an inference stack myself and check it against a reference instead of
 assuming it works.
 
+## How it fits together
+
+```mermaid
+flowchart TD
+    C["Client<br/>(curl, openai package)"] --> API["FastAPI server<br/>kiln_py/api: OpenAI-compatible /v1/completions"]
+    API --> GEN["Generate loop<br/>kiln_py/runtime: one request at a time, behind a lock"]
+    GEN --> M["Model (pybind11 boundary, csrc/bindings.cpp)"]
+
+    subgraph CPP["C++ / CUDA"]
+        M --> TOK["BPE tokenizer<br/>csrc/tokenizer"]
+        M --> LOAD["Weights loader<br/>csrc/loader (safetensors)"]
+        M --> FWD["Forward pass<br/>csrc/executor: attention, RMSNorm, RoPE, SwiGLU, sampler"]
+        FWD <--> KV["KV cache<br/>csrc/kv: contiguous, or paged with copy-on-write prefix sharing"]
+        FWD --> GPU["CUDA kernels + cuBLAS GEMM<br/>csrc/kernels/cuda"]
+        FWD --> Q["INT8 / INT4 quantization<br/>csrc/quant"]
+    end
+
+    HF["Hugging Face model"] -. compared by tools/hf_parity.py .-> FWD
+```
+
+A request comes in over HTTP, the generate loop calls the model one token at
+a time, and the model reads and writes the KV cache as it goes. Python only
+orchestrates; all tensor math is in C++/CUDA. The Hugging Face comparison runs
+offline and is not on the request path.
+
 ## What's in it
 
 | Piece | Where |
@@ -90,6 +115,4 @@ kiln_py/   Python API and runtime
 tests/     cpp/ (GoogleTest), py/ (pytest)
 tools/     Hugging Face comparison, LoRA training, quantizer cross-check
 bench/     benchmarks
-docs/      correctness.md (bugs found), defense.md (what each part is
-           and why), writeups/
 ```

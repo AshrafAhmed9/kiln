@@ -24,7 +24,7 @@ namespace kiln {
 //
 // valid_kv_len, when set, tells the function to ignore any key past that
 // point, as if it didn't exist. That's how padded sentences in the same
-// batch (Phase 4) avoid attending to each other's filler padding, without
+// batch avoid attending to each other's filler padding, without
 // needing a whole separate code path for the padded case.
 void Attention(const float* q, const float* k, const float* v, float* out,
                int64_t seq_len, int64_t kv_len, int64_t n_heads,

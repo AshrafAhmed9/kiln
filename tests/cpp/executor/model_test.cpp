@@ -58,7 +58,7 @@ TEST(Model, ProducesLogitsOfTheRightShape) {
   }
 }
 
-// This is the single most important test in Phase 3: generating a
+// This is the single most important test in this file: generating a
 // sentence one word at a time using the cache (read the prompt, then add
 // one new word using only the cache) must give the exact same numbers as
 // throwing the whole sentence-so-far at the model fresh every time, with

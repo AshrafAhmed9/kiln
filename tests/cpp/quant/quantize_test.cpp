@@ -151,9 +151,9 @@ TEST(QuantizeInt8, QuantizedMatmulStaysCloseToFullPrecisionMatmul) {
   EXPECT_LT(mean_squared_error, 1.0f);
 }
 
-// Phase 26's actual INT8xINT8 GEMM (accumulate in INT32, scale once at the
+// the actual INT8xINT8 GEMM (accumulate in INT32, scale once at the
 // end) versus this project's existing quantize-then-dequantize-then-FP32-
-// matmul path (Phase 9): both quantize the same weights the same way, so
+// matmul path: both quantize the same weights the same way, so
 // their outputs should be close to each other (both are approximating the
 // same full-precision answer, from the same quantized weight numbers) --
 // checking that directly is a much tighter, more specific claim than only
@@ -180,9 +180,9 @@ TEST(QuantizeInt8, RealInt8GemmMatchesDequantizeThenFp32MatmulPath) {
   QuantizeInt8PerChannel(input.data(), batch, cols, quantized_input.data(),
                          input_scales.data());
 
-  // The existing Phase 9 path: dequantize the weights back to float, then
+  // The existing path: dequantize the weights back to float, then
   // an ordinary FP32 matmul (the input here is used at full precision,
-  // unquantized, since Phase 9 only ever quantized weights).
+  // unquantized, since that path only ever quantized weights).
   std::vector<float> dequantized_weights(rows * cols);
   DequantizeInt8PerChannel(quantized_weights.data(), weight_scales.data(), rows,
                            cols, dequantized_weights.data());
@@ -205,7 +205,7 @@ TEST(QuantizeInt8, RealInt8GemmMatchesDequantizeThenFp32MatmulPath) {
   mean_squared_error /= static_cast<float>(dequant_then_fp32_out.size());
 
   // Loose for the same reason as the test above -- this quantizes the
-  // input as well as the weights, which the Phase 9 comparison point
+  // input as well as the weights, which the existing comparison point
   // doesn't, so a real (if small) gap between the two is expected, not
   // just quantizer noise.
   EXPECT_LT(mean_squared_error, 2.0f);

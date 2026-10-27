@@ -12,7 +12,7 @@ namespace {
 // divide by how many numbers are in the row before taking the square root.
 // This is a realistic, easy-to-make bug (an "off by a factor," not a
 // typo), used here only to prove the parity-style tolerance check below
-// would actually notice it -- see docs/learning/phase-11.md.
+// would actually notice it.
 void BuggyRmsNormMissingMeanDivision(const float* x, const float* weight,
                                      float* out, int64_t dim, float eps) {
   float sum_sq = 0.0f;
@@ -21,7 +21,7 @@ void BuggyRmsNormMissingMeanDivision(const float* x, const float* weight,
   for (int64_t i = 0; i < dim; ++i) out[i] = (x[i] / wrong_rms) * weight[i];
 }
 
-// This is Phase 11's "test the harness itself": hand the same tolerance
+// This is the "test the harness itself": hand the same tolerance
 // check used elsewhere in this project a known-correct result and a
 // known-wrong one, and confirm it actually reports disagreement --
 // proving a tolerance check that always says "close enough" wouldn't slip
@@ -39,7 +39,7 @@ TEST(ParityHarness, ToleranceCheckCatchesADeliberatelyInjectedBug) {
   BuggyRmsNormMissingMeanDivision(x.data(), weight.data(), buggy.data(), dim,
                                   eps);
 
-  // The project's real per-dtype tolerance (ADR-002) is on the order of
+  // The project's real per-dtype tolerance is on the order of
   // 1e-3 to 1e-5 for FP32 -- comfortably tighter than the gap this bug
   // produces, which is why a real parity gate would fail it loudly rather
   // than let it through as noise.

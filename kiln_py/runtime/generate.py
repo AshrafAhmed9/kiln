@@ -2,7 +2,7 @@
 next word?", one word at a time, until we have a full answer. This lives in
 Python because it's just a loop calling into C++ -- the actual heavy lifting
 (the forward pass) still happens on the C++ side, through the pybind11
-boundary described in constitution §6.
+boundary.
 """
 from __future__ import annotations
 

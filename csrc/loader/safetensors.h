@@ -21,8 +21,7 @@ struct TensorView {
 // Parses a .safetensors file: an 8-byte little-endian header length, that
 // many bytes of JSON describing each tensor's dtype/shape/byte-offsets, then
 // the raw tensor bytes. Loads via mmap so TensorView::data is a direct
-// pointer into the file -- see docs/learning/phase-01.md for why this
-// format is a zero-copy fit.
+// pointer into the file, which makes this format a zero-copy fit.
 class SafetensorsFile {
  public:
   // Throws std::runtime_error with a specific reason on any corruption:

@@ -46,5 +46,5 @@ jobs:
       - name: mypy
         run: mypy kiln_py
 
-      - name: pytest (scheduler, API, and the pybind11 boundary sanity check)
+      - name: pytest
         run: pytest tests/py

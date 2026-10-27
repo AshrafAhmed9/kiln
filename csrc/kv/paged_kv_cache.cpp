@@ -34,7 +34,7 @@ void PagedKVCache::IncRef(int64_t block_id) { ++ref_counts_[block_id]; }
 
 void PagedKVCache::DecRef(int64_t block_id) {
   // This mirrors a mistake already made and fixed once in this project
-  // (Arena::Allocate, Phase 0 -- see docs/correctness.md): a debug-only
+  // (Arena::Allocate): a debug-only
   // assert here would mean debug builds crash loudly on a double-free
   // while release builds silently let the reference count go negative
   // and never give the block back to the free pool. One rule, in every

@@ -7,9 +7,8 @@ namespace kiln {
 // A paged KV cache: all of the cache's memory is carved into fixed-size
 // blocks up front, and sequences pick up new blocks from a shared pool as
 // they grow, instead of each sequence getting one giant pre-reserved
-// chunk (the way the simpler Phase 3 KVCache works). See
-// docs/learning/phase-08.md for why this is the right generalization and
-// what it makes possible (no wasted worst-case reservation, and sharing
+// chunk (the way the simpler KVCache works). It
+// avoids the worst-case reservation and makes possible (sharing
 // an identical prompt's blocks between sequences instead of duplicating
 // them).
 //
@@ -76,7 +75,7 @@ class PagedSequence {
   static PagedSequence Fresh(PagedKVCache* cache);
 
   // Starts a new sequence that begins by sharing every block `parent`
-  // currently has -- the prefix-sharing case from docs/learning/phase-08.md.
+  // currently has -- the prefix-sharing case.
   // Nothing is copied yet; sharing only becomes an actual copy the moment
   // either sequence needs to write somewhere it doesn't own alone.
   static PagedSequence Fork(const PagedSequence& parent);

@@ -1,10 +1,9 @@
 // The real INT8xINT8 GEMM, via cuBLAS's INT32-accumulation path -- see
 // csrc/quant/quantize.h's Int8GemmBT for the CPU reference this mirrors,
-// and docs/learning/phase-26.md for why this is the piece that actually
-// gives INT8 a speed win (Phase 9's existing quantize-then-dequantize-then-
+// This is the piece that actually gives INT8 a speed win (the existing quantize-then-dequantize-then-
 // FP32-matmul path only ever saved memory, never GEMM time). Same
 // deliberate choice as GemmBTCuda: dense GEMM is cuBLAS's job, not a
-// hand-written kernel's, on this project's kernel-strategy ADR-007 -- the
+// hand-written kernel's -- the
 // interesting new work here is the INT32 accumulation and the
 // once-at-the-end dequant scale, not another hand-rolled matmul loop.
 //

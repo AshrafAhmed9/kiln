@@ -4,7 +4,7 @@ Backend availability alone does not guarantee that an installed PyTorch
 build can execute kernels on that backend. This was found on a Kaggle P100:
 `torch.cuda.is_available()` was true although the build had dropped its
 compute capability. Probe CUDA first, then Apple MPS, with one small real
-operation before selecting either backend; see docs/correctness.md.
+operation before selecting either backend.
 """
 from __future__ import annotations
 

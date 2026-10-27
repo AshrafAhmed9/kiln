@@ -42,8 +42,8 @@ def _toy_config(vocab_size=1000, hidden=64, layers=4, heads=4, kv_heads=2,
 def bench_naive_vs_kv_cache(num_new_tokens: int = 20) -> dict:
     """Naive: every new token recomputes the ENTIRE sequence so far from
     scratch (no cache). KV cache: every new token only costs the work for
-    that one new token. Both produce identical output (Phase 3 already
-    proves that); this measures the real wall-clock cost of the
+    that one new token. Both produce identical output (the KV-cache tests already
+    prove that); this measures the real wall-clock cost of the
     optimization, not just that the code runs.
     """
     config = _toy_config()

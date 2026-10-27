@@ -71,13 +71,9 @@ Model Model::LoadRandom(const ModelConfig& config, uint32_t seed) {
 
 Model Model::LoadFromSafetensors(const ModelConfig& config,
                                  const std::string& path) {
-  // This follows the standard Llama/HuggingFace naming for weight files
-  // (for example "model.layers.3.self_attn.q_proj.weight"). It has been
-  // written carefully to match that naming, but it has not yet been run
-  // against a real downloaded checkpoint in this environment -- doing
-  // that needs a real HuggingFace install, which this offline session
-  // doesn't have (see the project's zero-budget notes, ADR-009). The
-  // honest status of this function is recorded in docs/defense.md.
+  // Follows the standard Llama/Hugging Face weight naming (for example
+  // "model.layers.3.self_attn.q_proj.weight"). Checked against real
+  // SmolLM2 checkpoints by tools/hf_parity.py.
   SafetensorsFile file = SafetensorsFile::Load(path);
   Model model;
   model.config_ = config;
@@ -126,8 +122,8 @@ void Model::Forward(const int32_t* tokens, int64_t batch_size, int64_t seq_len,
                     KVCache* cache, float* out_logits,
                     std::vector<std::vector<float>>* layer_outputs) const {
   // A cache only makes sense for one sentence at a time in this project's
-  // current design (Phase 3's cache is built for a single sequence; batching
-  // several sentences together with no cache at all is Phase 4's separate
+  // current design (the cache is built for a single sequence; batching
+  // several sentences together with no cache at all is a separate
   // case). Passing both together isn't a case anyone should hit on purpose,
   // so it's rejected loudly here rather than silently doing the wrong thing
   // (quietly ignoring the cache would be far worse than an error, since the
@@ -136,8 +132,7 @@ void Model::Forward(const int32_t* tokens, int64_t batch_size, int64_t seq_len,
   if (cache != nullptr && batch_size > 1) {
     throw std::invalid_argument(
         "Model::Forward: a KV cache can only be used with batch_size == 1 "
-        "in this project's current design -- see docs/defense.md phase 4/8 "
-        "entries for why batching and caching don't yet combine.");
+        "in this project's current design.");
   }
 
   int64_t d = config_.hidden_size;
@@ -207,7 +202,7 @@ void Model::Forward(const int32_t* tokens, int64_t batch_size, int64_t seq_len,
                 kv_len, config_.n_heads, config_.n_kv_heads, config_.head_dim,
                 start_pos);
     } else {
-      // Padded batch (Phase 4): every sentence in the batch keeps to its
+      // Padded batch: every sentence in the batch keeps to its
       // own lane and never attends into another sentence's tokens or
       // padding -- we just run the same attention function once per
       // sentence, pointed at that sentence's own slice of the batch.

@@ -1,7 +1,7 @@
 // The greedy (argmax) sampling kernel on the GPU. It passed a small
-// CPU-vs-GPU check on Kaggle's P100 -- see docs/learning/phase-07.md. Only greedy argmax is written
-// as a hand-written CUDA kernel here (the third of the three headline
-// kernels this project commits to writing by hand, per ADR-007); the
+// CPU-vs-GPU check on Kaggle's P100. Only greedy argmax is written
+// as a hand-written CUDA kernel here;
+// the
 // randomized settings (temperature, top-k, top-p, repetition penalty) use
 // the exact same reduction pattern as this kernel but were left as CPU-side
 // work in this pass, since the interesting, defend-in-an-interview idea --

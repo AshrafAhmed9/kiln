@@ -4,13 +4,12 @@
 
 namespace kiln {
 
-// Contiguous, single-sequence KV cache (Phase 3 scope; Phase 8 upgrades
+// Contiguous, single-sequence KV cache (simple version; paged upgrades
 // this to a block/paged allocator for multiple concurrent sequences --
-// see docs/learning/phase-03.md for why "contiguous" is the right starting
-// point and what specifically paging generalizes).
+// contiguous is the simplest starting point, and paging generalizes it).
 //
 // One buffer per layer, sized for the whole max sequence up front (arena
-// discipline, constitution §3: no per-token reallocation). `length()` is
+// discipline: no per-token reallocation). `length()` is
 // how many positions are already filled; every layer shares the same
 // length, since one Model::Forward call advances every layer by the same
 // number of new tokens.

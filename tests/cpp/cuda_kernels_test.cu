@@ -129,7 +129,7 @@ TEST(CudaGemm, CuBlasMatchesCpuReference) {
   for (size_t i = 0; i < actual.size(); ++i) EXPECT_NEAR(actual[i], expected[i], 1e-5f);
 }
 
-// Phase 26: the real INT8 GEMM, checked against Int8GemmBT's CPU reference
+// The real INT8 GEMM, checked against Int8GemmBT's CPU reference
 // -- the same already-quantized numbers, same INT32 accumulation math, run
 // on the GPU's tensor cores instead of a CPU loop. This is a correctness
 // check, not the speed measurement (that's bench/int8_gemm_cuda_benchmark.cu).
@@ -137,8 +137,7 @@ TEST(CudaInt8Gemm, MatchesCpuReference) {
   if (!DeviceSupportsInt8TensorCores()) {
     GTEST_SKIP() << "This GPU's compute capability is below 6.1 -- cuBLAS's "
                     "INT8 tensor-core path (CUBLAS_COMPUTE_32I) isn't "
-                    "available here. Real, named hardware gap, not a bug: "
-                    "see docs/correctness.md.";
+                    "available here. Real, named hardware gap, not a bug.";
   }
   constexpr int64_t kRows = 4;   // "M" -- number of activation rows
   constexpr int64_t kInput = 32;   // "K" -- must be a multiple of 4 for cuBLAS's INT8 IMMA path

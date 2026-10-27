@@ -4,11 +4,7 @@ random weights, no byte-level placeholder tokenizer.
 
 CudaModel owns exactly one device-resident KV cache (see
 csrc/executor/cuda_model.cu), unlike the CPU Model's per-request KVCache
-objects that kiln_py/runtime/continuous_batch.py batches across requests.
-So this path serves one request at a time behind a lock instead of
-pretending to batch a cache structure that doesn't support it. Proving the
-full stack -- safetensors load, real tokenizer, real forward pass, real
-device -- end to end honestly beats claiming batching this doesn't do.
+objects. So this path serves one request at a time behind a lock.
 """
 from __future__ import annotations
 

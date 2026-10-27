@@ -35,8 +35,7 @@ TEST(PagedKVCache,
   // Freeing it again is a real caller bug (a double-free): this must be
   // reported the same way in every build, not just crash an assert in
   // debug builds while silently corrupting the free pool in release ones
-  // (the exact mistake already made and fixed once in Arena -- see
-  // docs/correctness.md).
+  // (the exact mistake already made and fixed once in Arena).
   EXPECT_THROW(cache.DecRef(block), std::runtime_error);
 }
 

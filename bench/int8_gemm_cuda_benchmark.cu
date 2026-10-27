@@ -1,6 +1,6 @@
 // Times the real INT8 GEMM (Int8GemmBTCuda) against the existing FP32
-// GEMM (GemmBTCuda) on the same shape -- this is the measurement Phase 9's
-// CPU-only INT8 story has been missing: the actual GPU speed win the
+// GEMM (GemmBTCuda) on the same shape -- this is the GPU measurement that the
+// CPU-only INT8 path was missing: the actual GPU speed win the
 // existing README table names as "not yet measured," not another
 // memory/accuracy number.
 #include <cuda_runtime.h>
@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  // SmolLM2-135M's own dimensions (Phase 22's real reference checkpoint):
+  // SmolLM2-135M's own dimensions (the real reference checkpoint):
   // hidden_size 576, one MLP projection at 1536. K must be a multiple of 4
   // for cuBLAS's INT8 IMMA path; both these already are.
   int rows = 512;

@@ -6,8 +6,8 @@ namespace kiln {
 
 // INT8, one scale per row (per output channel -- a weight matrix here is
 // [rows, cols] = [out_features, in_features], so "per channel" means "per
-// row"). See docs/learning/phase-09.md for why a separate scale per group
-// keeps one outlier from ruining precision for everything else.
+// row"). A separate scale per group keeps one outlier from ruining
+// precision for everything else.
 //
 // weights is [rows, cols]. out_quantized (same shape) holds each weight's
 // nearest representable integer step, in [-127, 127]. out_scales (one per
@@ -20,7 +20,7 @@ void DequantizeInt8PerChannel(const int8_t* quantized, const float* scales,
 
 // INT4, grouped every `group_size` consecutive weights within a row (a
 // smaller group than "per row" trades a little more overhead for finer
-// protection against outliers -- see docs/learning/phase-09.md). Each
+// protection against outliers). Each
 // value is packed two-to-a-byte, since fitting two 4-bit numbers in one
 // byte is the entire reason to use 4-bit numbers instead of 8-bit ones.
 // `group_size` must be even, so every group packs into whole bytes with
@@ -41,9 +41,9 @@ void DequantizeInt4GroupWise(const uint8_t* packed, const float* scales,
 // overflows an INT8 or even an INT16), and only the final sum gets
 // converted back to a float and scaled -- this is what actually lets INT8
 // tensor cores do the work on a GPU, unlike this project's existing
-// quantize-then-dequantize-then-FP32-matmul path (Phase 9), which only ever
+// quantize-then-dequantize-then-FP32-matmul path, which only ever
 // saves memory, never GEMM time, because it does the real multiplication in
-// FP32 either way. See docs/learning/phase-26.md.
+// FP32 either way.
 //
 // a_quantized is [M, K], one scale per row (out_scales_a, M entries) --
 // this is the *activation* side, quantized fresh per call, since unlike

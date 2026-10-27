@@ -6,7 +6,7 @@
 
 namespace kiln {
 
-// On-disk weights are BF16/FP16; the CPU forward pass (Part I) computes in
+// On-disk weights are BF16/FP16; the CPU forward pass computes in
 // FP32. These convert one element at a time -- simple and obviously
 // correct, which matters more here than speed: this runs once at load time,
 // not per-token.

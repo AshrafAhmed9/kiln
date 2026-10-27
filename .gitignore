@@ -7,9 +7,6 @@ compile_commands.json
 kiln_py/_C*.so
 *.egg-info/
 .mypy_cache/
-docs/interview-study-flowchart.md
-docs/interview-study-flowchart.html
-docs/interview-prep.md
 .pytest_cache/
 .venv-oracle/
 graphify-out/

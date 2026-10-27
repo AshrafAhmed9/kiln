@@ -41,7 +41,7 @@ def test_completion_rejects_nonpositive_max_tokens():
         assert response.status_code == 422
 
 
-def test_concurrent_non_streaming_completions_use_the_scheduler_path():
+def test_concurrent_non_streaming_completions_work():
     def complete(prompt: str):
         return client.post("/v1/completions", json={
             "prompt": prompt, "max_tokens": 3, "seed": 7,
@@ -76,7 +76,7 @@ def test_streaming_completion_sends_multiple_chunks_then_done():
     assert len(lines) == 3 + 1
 
 
-def test_concurrent_streaming_completions_share_the_scheduler_service():
+def test_concurrent_streaming_completions_work():
     def stream(prompt: str) -> list[str]:
         with client.stream("POST", "/v1/completions", json={
             "prompt": prompt, "max_tokens": 3, "stream": True, "seed": 9,

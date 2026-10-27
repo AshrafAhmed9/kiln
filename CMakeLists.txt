@@ -40,7 +40,7 @@ endif()
 find_package(nlohmann_json 3.10 REQUIRED)
 find_package(ICU REQUIRED COMPONENTS i18n uc)
 
-# The compute layer (csrc/) -- constitution §6: everything below the
+# The compute layer (csrc/) -- everything below the
 # pybind11 boundary. Kept as its own static lib so tests link it directly,
 # without going through Python.
 add_library(kiln_cpp STATIC
@@ -67,8 +67,7 @@ target_link_libraries(kiln_cpp PUBLIC nlohmann_json::nlohmann_json ICU::i18n ICU
 # position-independent code links fine into a plain executable, but fails
 # on Linux when linked into a *shared* object -- which is exactly what
 # _C is. This worked by coincidence on macOS (where PIC isn't enforced the
-# same way) and only failed when actually building the Docker image on
-# Linux for the first time -- a real, caught-late bug, not a hypothetical.
+# same way) and only failed when first built on Linux.
 set_target_properties(kiln_cpp PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(KILN_BUILD_CUDA)
@@ -120,7 +119,7 @@ if(KILN_BUILD_PYBIND)
     FetchContent_MakeAvailable(pybind11)
   endif()
 
-  # The one file allowed to know about both sides of the §6 boundary.
+  # The one file allowed to know about both sides of the pybind11 boundary.
   pybind11_add_module(_C csrc/bindings.cpp)
   target_link_libraries(_C PRIVATE kiln_cpp)
   if(KILN_BUILD_CUDA)

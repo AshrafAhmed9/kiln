@@ -11,7 +11,7 @@ namespace {
 // A tiny hand-built tokenizer.json: vocab covers every byte-level symbol
 // for 'a','b','c',' ' plus two merged tokens, so the merge loop actually
 // exercises multi-step merging. This is NOT a HuggingFace conformance test
-// (that needs the real fixture -- see docs/learning/phase-01.md); it tests
+// (that needs the real fixture); it tests
 // that our own merge algorithm is internally consistent: encode then decode
 // returns the original string, and a known merge sequence produces the
 // expected token count.

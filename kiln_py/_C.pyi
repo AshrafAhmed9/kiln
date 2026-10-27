@@ -1,4 +1,4 @@
-"""Typed stub for the kiln_py._C pybind11 extension -- the §6 boundary
+"""Typed stub for the kiln_py._C pybind11 extension -- the pybind11 boundary
 contract, written down. Every symbol the C++ compute layer exposes to
 Python must be listed here; if it isn't, it isn't part of the contract.
 """

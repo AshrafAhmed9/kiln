@@ -96,8 +96,7 @@ BpeTokenizer BpeTokenizer::Load(const std::string& tokenizer_json_path) {
   // The byte<->unicode table (GPT-2 algorithm): printable Latin-1 ranges
   // map to themselves; every other byte value (0-255) gets assigned the
   // next unused codepoint above 255. This makes every byte value map to
-  // *some* visible, single-codepoint symbol -- see docs/learning/phase-01.md
-  // for why this is what makes byte-level BPE total over all byte strings.
+  // *some* visible, single-codepoint symbol, which is what makes byte-level BPE total over all byte strings.
   std::vector<int> printable;
   for (int b = '!'; b <= '~'; ++b) printable.push_back(b);
   for (int b = 0xA1; b <= 0xAC; ++b) printable.push_back(b);

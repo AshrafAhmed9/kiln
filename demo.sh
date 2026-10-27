@@ -123,7 +123,18 @@ step "6/6  Correctness and GPU"
 if [ -n "${KILN_CHECKPOINT_DIR:-}" ] && "$PY" -c "import torch, transformers" 2>/dev/null; then
   note "Comparing Kiln's scores to Hugging Face on 10 prompts..."
   "$PY" tools/hf_parity.py --model-dir "$KILN_CHECKPOINT_DIR" \
-    --prompts-file tools/fixtures/hf_parity_prompts.txt 2>/dev/null | tail -1
+    --prompts-file tools/fixtures/hf_parity_prompts.txt 2>/dev/null >"$LOG_DIR/parity.txt" || true
+  "$PY" - "$LOG_DIR/parity.txt" <<'PYEOF'
+import json, sys
+text = open(sys.argv[1]).read()
+results = json.loads(text[: text.rindex("]") + 1])
+worst = max(r["max_abs_diff"] for r in results)
+same = sum(r["top1_matches"] for r in results)
+print(f"   Worst difference in the final scores: {worst:.1e} (across {len(results)} prompts)")
+print(f"   Same top word as Hugging Face: {same}/{len(results)} prompts")
+print("   (Each layer's output is also checked, with a looser limit for rounding.)")
+print("   " + text.strip().splitlines()[-1])
+PYEOF
 else
   note "Skipped the Hugging Face comparison. It needs a checkpoint and: pip install -e '.[oracle]'"
 fi

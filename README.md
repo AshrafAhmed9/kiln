@@ -11,57 +11,7 @@ assuming it works.
 
 ## How it fits together
 
-Follow one request from top to bottom.
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│  YOU   send a prompt over HTTP                                         │
-│        "The capital of France is"  (curl, or the openai package)       │
-└────────────────────────────────────┬───────────────────────────────────┘
-                                     ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│ 1  WEB API                                                    Python   │
-│                                                                        │
-│  Receives the request in the same format OpenAI uses, so existing      │
-│  tools work unchanged. Handles one request at a time.                  │
-│                                                                        │
-│  kiln_py/api                                                           │
-└────────────────────────────────────┬───────────────────────────────────┘
-                                     ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│ 2  TOKENIZER                                                     C++   │
-│                                                                        │
-│  Cuts the text into pieces and turns each piece into a number,         │
-│  because the model only works with numbers.                            │
-│                                                                        │
-│  csrc/tokenizer                                                        │
-└────────────────────────────────────┬───────────────────────────────────┘
-                                     ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│ 3  MODEL                                                C++ and CUDA   │
-│                                                                        │
-│  Pushes the numbers through the network layers (attention, RMSNorm,    │
-│  RoPE, SwiGLU) and picks the next word. Weights are read from disk.    │
-│                                                                        │
-│  KV cache   Remembers the words already processed, so each new word    │
-│             costs one step instead of re-reading the whole prompt.     │
-│             Paged, so prompts that start the same share memory.        │
-│  GPU        Hand-written CUDA kernels, cuBLAS for matrix multiply.     │
-│  INT8/INT4  Shrinks the weights to use less memory.                    │
-│                                                                        │
-│  Repeats for every word it writes: the new word goes back in.          │
-│                                                                        │
-│  csrc/executor  csrc/kv  csrc/kernels  csrc/quant  csrc/loader         │
-└────────────────────────────────────┬───────────────────────────────────┘
-                                     ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│  YOU   get the text back, all at once or streamed word by word         │
-│        "Paris. Paris is the largest city in France and..."             │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-Checked offline, not part of a request: `tools/hf_parity.py` runs the same
-prompts through Kiln and through Hugging Face and compares the output scores.
+![Kiln architecture: a prompt goes through the web API and tokenizer into the model, which contains the weights, forward pass, KV cache, GPU kernels and quantization; the text comes back out](assets/architecture.svg)
 
 ## What's in it
 

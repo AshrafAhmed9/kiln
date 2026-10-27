@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 534" width="960" height="534" role="img" aria-labelledby="t d">
+<title id="t">How Kiln answers one request</title>
+<desc id="d">A prompt goes to a Python web API, then a C++ tokenizer, then the C++ and CUDA model, and the text comes back. The model contains weights, the forward pass, a KV cache, GPU kernels and quantization.</desc>
+<defs>
+<marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="#64748b"/></marker>
+<filter id="sh" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.10"/></filter>
+</defs>
+<style>
+text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+.h{font-size:19px;font-weight:700;fill:#0f172a}
+.s{font-size:12.5px;fill:#64748b}
+.ct{font-size:15.5px;font-weight:700;fill:#0f172a}
+.cd{font-size:12px;fill:#475569}
+.pl{font-size:10.5px;font-weight:600}
+.nb{font-size:12px;font-weight:700;fill:#fff;text-anchor:middle}
+.pth{font-size:11px;fill:#6d28d9;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.lbl{font-size:11px;font-weight:700;letter-spacing:1.4px;fill:#6d28d9}
+</style>
+<rect width="960" height="534" rx="14" fill="#ffffff"/>
+<rect x="0.5" y="0.5" width="959" height="533" rx="14" fill="none" stroke="#e2e8f0"/>
+<text x="20" y="36" class="h">How Kiln answers one request</text>
+<text x="20" y="56" class="s">Follow the arrows. Python takes the request in; C++ and CUDA do the work.</text>
+
+<rect x="20" y="76" width="160" height="125" rx="12" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" filter="url(#sh)"/>
+<circle cx="42" cy="100" r="12" fill="#334155"/><text x="42" y="104.5" class="nb">1</text>
+<text x="34" y="138" class="ct">You</text>
+<text x="34" y="158" class="cd">Send a prompt: curl</text>
+<text x="34" y="174" class="cd">or the openai</text>
+<text x="34" y="190" class="cd">Python package</text>
+<rect x="210" y="76" width="160" height="125" rx="12" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" filter="url(#sh)"/>
+<circle cx="232" cy="100" r="12" fill="#334155"/><text x="232" y="104.5" class="nb">2</text>
+<rect x="304" y="90" width="56" height="20" rx="10" fill="#dbeafe"/><text x="332.0" y="104" class="pl" text-anchor="middle" fill="#1d4ed8">Python</text>
+<text x="224" y="138" class="ct">Web API</text>
+<text x="224" y="158" class="cd">Takes the request in</text>
+<text x="224" y="174" class="cd">OpenAI's format,</text>
+<text x="224" y="190" class="cd">one at a time</text>
+<rect x="400" y="76" width="160" height="125" rx="12" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" filter="url(#sh)"/>
+<circle cx="422" cy="100" r="12" fill="#334155"/><text x="422" y="104.5" class="nb">3</text>
+<rect x="494" y="90" width="56" height="20" rx="10" fill="#ede9fe"/><text x="522.0" y="104" class="pl" text-anchor="middle" fill="#6d28d9">C++</text>
+<text x="414" y="138" class="ct">Tokenizer</text>
+<text x="414" y="158" class="cd">Turns the text into</text>
+<text x="414" y="174" class="cd">numbers the model</text>
+<text x="414" y="190" class="cd">can read</text>
+<rect x="590" y="76" width="160" height="125" rx="12" fill="#faf5ff" stroke="#8b5cf6" stroke-width="2" filter="url(#sh)"/>
+<circle cx="612" cy="100" r="12" fill="#7c3aed"/><text x="612" y="104.5" class="nb">4</text>
+<rect x="656" y="90" width="84" height="20" rx="10" fill="#ede9fe"/><text x="698.0" y="104" class="pl" text-anchor="middle" fill="#6d28d9">C++ · CUDA</text>
+<text x="604" y="138" class="ct">Model</text>
+<text x="604" y="158" class="cd">Predicts the next</text>
+<text x="604" y="174" class="cd">word, then repeats</text>
+<text x="604" y="190" class="cd">until the answer is done</text>
+<text x="736" y="138" text-anchor="end" font-size="17" fill="#7c3aed">↻</text>
+<rect x="780" y="76" width="160" height="125" rx="12" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" filter="url(#sh)"/>
+<circle cx="802" cy="100" r="12" fill="#334155"/><text x="802" y="104.5" class="nb">5</text>
+<text x="794" y="138" class="ct">You</text>
+<text x="794" y="158" class="cd">Get the text back,</text>
+<text x="794" y="174" class="cd">all at once or</text>
+<text x="794" y="190" class="cd">word by word</text>
+<line x1="183" y1="138.5" x2="207" y2="138.5" stroke="#64748b" stroke-width="1.8" marker-end="url(#ar)"/>
+<line x1="373" y1="138.5" x2="397" y2="138.5" stroke="#64748b" stroke-width="1.8" marker-end="url(#ar)"/>
+<line x1="563" y1="138.5" x2="587" y2="138.5" stroke="#64748b" stroke-width="1.8" marker-end="url(#ar)"/>
+<line x1="753" y1="138.5" x2="777" y2="138.5" stroke="#64748b" stroke-width="1.8" marker-end="url(#ar)"/>
+<line x1="670.0" y1="201" x2="670.0" y2="238" stroke="#8b5cf6" stroke-width="1.8" stroke-dasharray="4 4"/>
+<rect x="20" y="236" width="920" height="220" rx="14" fill="#faf5ff" stroke="#ddd6fe"/>
+<text x="42" y="266" class="lbl">INSIDE THE MODEL (C++ AND CUDA)</text>
+<rect x="34" y="284" width="168" height="150" rx="10" fill="#ffffff" stroke="#e9d5ff" filter="url(#sh)"/>
+<text x="48" y="312" class="ct">Weights</text>
+<text x="48" y="336" class="cd">Read from disk in</text>
+<text x="48" y="353" class="cd">the safetensors</text>
+<text x="48" y="370" class="cd">format</text>
+<text x="48" y="424" class="pth">csrc/loader</text>
+<rect x="215" y="284" width="168" height="150" rx="10" fill="#ffffff" stroke="#e9d5ff" filter="url(#sh)"/>
+<text x="229" y="312" class="ct">Forward pass</text>
+<text x="229" y="336" class="cd">Attention, RMSNorm,</text>
+<text x="229" y="353" class="cd">RoPE, SwiGLU, then</text>
+<text x="229" y="370" class="cd">pick the next word</text>
+<text x="229" y="424" class="pth">csrc/executor</text>
+<rect x="396" y="284" width="168" height="150" rx="10" fill="#ffffff" stroke="#e9d5ff" filter="url(#sh)"/>
+<text x="410" y="312" class="ct">KV cache</text>
+<text x="410" y="336" class="cd">Remembers old words,</text>
+<text x="410" y="353" class="cd">so each new word is</text>
+<text x="410" y="370" class="cd">one step (11.2× faster)</text>
+<text x="410" y="387" class="cd">Paged, shares prompts</text>
+<text x="410" y="424" class="pth">csrc/kv</text>
+<rect x="577" y="284" width="168" height="150" rx="10" fill="#ffffff" stroke="#e9d5ff" filter="url(#sh)"/>
+<text x="591" y="312" class="ct">GPU kernels</text>
+<text x="591" y="336" class="cd">Hand-written CUDA</text>
+<text x="591" y="353" class="cd">for attention, norm,</text>
+<text x="591" y="370" class="cd">RoPE and sampling;</text>
+<text x="591" y="387" class="cd">cuBLAS for matmul</text>
+<text x="591" y="424" class="pth">csrc/kernels</text>
+<rect x="758" y="284" width="168" height="150" rx="10" fill="#ffffff" stroke="#e9d5ff" filter="url(#sh)"/>
+<text x="772" y="312" class="ct">Quantization</text>
+<text x="772" y="336" class="cd">INT8 / INT4 weights:</text>
+<text x="772" y="353" class="cd">3.8× smaller, and</text>
+<text x="772" y="370" class="cd">INT8 matmul is 1.6×</text>
+<text x="772" y="387" class="cd">faster than FP32</text>
+<text x="772" y="424" class="pth">csrc/quant</text>
+<rect x="20" y="474" width="920" height="40" rx="10" fill="#ecfdf5" stroke="#a7f3d0"/>
+<text x="480" y="499" text-anchor="middle" font-size="12.5" fill="#065f46">Checked offline against Hugging Face with tools/hf_parity.py (score difference about 0.00006)</text>
+</svg>
